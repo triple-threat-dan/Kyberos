@@ -10,7 +10,7 @@ import aiofiles
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from auric.core.database import (
+from kyberos.core.database import (
     AuditLogger, 
     TaskExecution, 
     TaskStep, 
@@ -22,7 +22,7 @@ from auric.core.database import (
 
 @pytest.fixture
 async def temp_db_path(tmp_path):
-    return tmp_path / "test_auric.db"
+    return tmp_path / "test_kyberos.db"
 
 @pytest.fixture
 async def audit_logger(temp_db_path):
@@ -33,10 +33,10 @@ async def audit_logger(temp_db_path):
 
 @pytest.mark.asyncio
 async def test_audit_logger_default_path(tmp_path):
-    # Mock AURIC_ROOT to a temp directory
-    with patch("auric.core.database.AURIC_ROOT", tmp_path):
+    # Mock KYBEROS_ROOT to a temp directory
+    with patch("kyberos.core.database.KYBEROS_ROOT", tmp_path):
         logger = AuditLogger()
-        assert logger.db_path == tmp_path / "auric.db"
+        assert logger.db_path == tmp_path / "kyberos.db"
         assert logger.db_path.parent.exists()
 
 @pytest.mark.asyncio
@@ -250,24 +250,24 @@ async def test_summarize_session(audit_logger):
     # Setup some chat
     await audit_logger.log_chat("USER", "Do something", session_id="sess1")
     
-    # Mock AURIC_ROOT for file writing
-    with patch("auric.core.database.AURIC_ROOT") as mock_root:
+    # Mock KYBEROS_ROOT for file writing
+    with patch("kyberos.core.database.KYBEROS_ROOT") as mock_root:
         mock_root.__truediv__.return_value = mock_root
         mock_root.parent = mock_root # allow nested div
         
         # We need to mock the path behavior properly
-        # AURIC_ROOT / "memories" / f"{today}.md"
+        # KYBEROS_ROOT / "memories" / f"{today}.md"
         mock_memories_dir = MagicMock()
         mock_root.__truediv__.side_effect = lambda x: mock_memories_dir if x == "memories" else mock_root
         
         # Actually it's easier to just mock the file open
         # but AuditLogger uses aiofiles
         
-        # Let's try to mock AURIC_ROOT so it points to a real temp dir
+        # Let's try to mock KYBEROS_ROOT so it points to a real temp dir
         temp_memories = audit_logger.db_path.parent / "memories"
         temp_memories.mkdir()
         
-        with patch("auric.core.database.AURIC_ROOT", audit_logger.db_path.parent):
+        with patch("kyberos.core.database.KYBEROS_ROOT", audit_logger.db_path.parent):
             await audit_logger.summarize_session("sess1", gateway)
             
             today = datetime.now().strftime("%Y-%m-%d")
@@ -291,7 +291,7 @@ async def test_summarize_session_null(audit_logger):
     
     await audit_logger.log_chat("USER", "Nothing important", session_id="sess1")
     
-    with patch("auric.core.database.AURIC_ROOT", audit_logger.db_path.parent):
+    with patch("kyberos.core.database.KYBEROS_ROOT", audit_logger.db_path.parent):
         await audit_logger.summarize_session("sess1", gateway)
         
         today = datetime.now().strftime("%Y-%m-%d")
@@ -331,7 +331,7 @@ async def test_init_db_wal_retry(temp_db_path):
     mock_engine.begin.return_value.__aenter__.return_value = mock_conn
     logger.engine = mock_engine
     
-    with patch("auric.core.database.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+    with patch("kyberos.core.database.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         await logger.init_db()
         assert mock_sleep.called
         assert mock_conn.execute.call_count == 7
@@ -369,7 +369,7 @@ async def test_init_db_wal_permanent_failure(temp_db_path):
     mock_engine.begin.return_value.__aenter__.return_value = mock_conn
     logger.engine = mock_engine
     
-    with patch("auric.core.database.asyncio.sleep", new_callable=AsyncMock):
+    with patch("kyberos.core.database.asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(Exception, match="permanent lock"):
             await logger.init_db()
 

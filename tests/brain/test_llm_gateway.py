@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import AsyncMock, Mock, patch, MagicMock
 import asyncio
-from auric.brain.llm_gateway import LLMGateway
-from auric.core.config import AuricConfig, AgentsConfig, ModelConfig, LLMKeys
-from auric.core.database import AuditLogger, LLMInteraction
+from kyberos.brain.llm_gateway import LLMGateway
+from kyberos.core.config import KyberosConfig, AgentsConfig, ModelConfig, LLMKeys
+from kyberos.core.database import AuditLogger, LLMInteraction
 
 @pytest.fixture
 def mock_config():
-    config = Mock(spec=AuricConfig)
+    config = Mock(spec=KyberosConfig)
     config.agents = Mock(spec=AgentsConfig)
     config.agents.is_local = False
     config.agents.models = {
@@ -56,7 +56,7 @@ class TestLLMGatewayInitialization:
 class TestLLMGatewayChat:
     @pytest.mark.asyncio
     async def test_chat_completion_success(self, mock_config, mock_audit_logger):
-        with patch("auric.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
             gateway = LLMGateway(mock_config, mock_audit_logger)
             
             mock_response = Mock()
@@ -82,7 +82,7 @@ class TestLLMGatewayChat:
 
     @pytest.mark.asyncio
     async def test_chat_completion_local_semaphore(self, mock_config, mock_audit_logger):
-        with patch("auric.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
             gateway = LLMGateway(mock_config, mock_audit_logger)
             mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="Hi"))])
             
@@ -112,7 +112,7 @@ class TestLLMGatewayChat:
     async def test_chat_completion_missing_tier(self, mock_config):
         gateway = LLMGateway(mock_config)
         # Should fallback to smart_model (gpt-4) if tier is missing
-        with patch("auric.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
             mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="OK"))])
             
             await gateway.chat_completion(messages=[], tier="non_existent")
@@ -122,7 +122,7 @@ class TestLLMGatewayChat:
             
     @pytest.mark.asyncio
     async def test_chat_completion_key_fallback(self, mock_config):
-        with patch("auric.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
             gateway = LLMGateway(mock_config)
             mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="Hi"))])
             
@@ -138,7 +138,7 @@ class TestLLMGatewayChat:
 
     @pytest.mark.asyncio
     async def test_malformed_response_recovery(self, mock_config):
-        with patch("auric.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
             gateway = LLMGateway(mock_config)
             
             # Simulate exception with embedded content
@@ -153,7 +153,7 @@ class TestLLMGatewayChat:
 class TestLLMGatewayAudit:
     @pytest.mark.asyncio
     async def test_audit_logging_structure(self, mock_config, mock_audit_logger):
-        with patch("auric.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
             gateway = LLMGateway(mock_config, mock_audit_logger)
             
             # Mock successful response with usage stats
@@ -183,7 +183,7 @@ class TestLLMGatewayAudit:
     @pytest.mark.asyncio
     async def test_audit_logging_serialization(self, mock_config, mock_audit_logger):
         """Verify that objects (like Pydantic models) in messages are serialized."""
-        with patch("auric.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
             gateway = LLMGateway(mock_config, mock_audit_logger)
             mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="OK"))])
             
@@ -203,7 +203,7 @@ class TestLLMGatewayAudit:
     @pytest.mark.asyncio
     async def test_audit_logging_failure_safe(self, mock_config, mock_audit_logger):
         """Verify that logging failure does NOT break the main chat execution."""
-        with patch("auric.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
             gateway = LLMGateway(mock_config, mock_audit_logger)
             mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="OK"))])
             

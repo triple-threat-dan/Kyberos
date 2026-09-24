@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from auric.core.heartbeat import HeartbeatManager, can_dream, run_dream_cycle_task, run_heartbeat_task
+from kyberos.core.heartbeat import HeartbeatManager, can_dream, run_dream_cycle_task, run_heartbeat_task
 
 @pytest.fixture(autouse=True)
 def reset_heartbeat_singleton():
@@ -48,14 +48,14 @@ def test_heartbeat_manager_is_idle():
 
 @pytest.mark.asyncio
 async def test_can_dream_conditions(tmp_path):
-    # Setup AURIC_ROOT
-    mock_root = tmp_path / ".auric"
+    # Setup KYBEROS_ROOT
+    mock_root = tmp_path / ".kyberos"
     mock_root.mkdir()
     log_dir = mock_root / "logs"
     log_dir.mkdir()
     log_file = log_dir / "current_session.log"
 
-    with patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+    with patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
         hb = HeartbeatManager.get_instance()
         
         # Case 1: Active user
@@ -76,29 +76,29 @@ async def test_can_dream_conditions(tmp_path):
 
 @pytest.mark.asyncio
 async def test_run_dream_cycle_task_success():
-    with patch("auric.core.heartbeat.can_dream", return_value=True), \
-         patch("auric.memory.chronicles.perform_dream_cycle", new_callable=AsyncMock) as mock_perform:
+    with patch("kyberos.core.heartbeat.can_dream", return_value=True), \
+         patch("kyberos.memory.timeline.perform_dream_cycle", new_callable=AsyncMock) as mock_perform:
         await run_dream_cycle_task()
         mock_perform.assert_awaited_once()
 
 @pytest.mark.asyncio
 async def test_run_dream_cycle_task_skipped():
-    with patch("auric.core.heartbeat.can_dream", return_value=False), \
-         patch("auric.memory.chronicles.perform_dream_cycle", new_callable=AsyncMock) as mock_perform:
+    with patch("kyberos.core.heartbeat.can_dream", return_value=False), \
+         patch("kyberos.memory.timeline.perform_dream_cycle", new_callable=AsyncMock) as mock_perform:
         await run_dream_cycle_task()
         mock_perform.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_run_dream_cycle_task_failure(caplog):
-    with patch("auric.core.heartbeat.can_dream", return_value=True), \
-         patch("auric.memory.chronicles.perform_dream_cycle", side_effect=Exception("Nightmare")) as mock_perform:
+    with patch("kyberos.core.heartbeat.can_dream", return_value=True), \
+         patch("kyberos.memory.timeline.perform_dream_cycle", side_effect=Exception("Nightmare")) as mock_perform:
         await run_dream_cycle_task()
         assert "Nightmare detected" in caplog.text
 
 @pytest.mark.asyncio
 async def test_run_heartbeat_task_active_hours(tmp_path, mock_config, mock_audit_logger):
-    # Setup AURIC_ROOT and HEARTBEAT.md
-    mock_root = tmp_path / ".auric"
+    # Setup KYBEROS_ROOT and HEARTBEAT.md
+    mock_root = tmp_path / ".kyberos"
     mock_root.mkdir()
     hb_file = mock_root / "HEARTBEAT.md"
     hb_file.write_text("- Task 1")
@@ -110,8 +110,8 @@ async def test_run_heartbeat_task_active_hours(tmp_path, mock_config, mock_audit
 
     # 1. Inside hours
     mock_config.agents.defaults.heartbeat.active_hours = "00:00-23:59"
-    with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-         patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
         await run_heartbeat_task(command_bus)
         
         # Verify Audit Log
@@ -136,22 +136,22 @@ async def test_run_heartbeat_task_active_hours(tmp_path, mock_config, mock_audit
     if now.hour == 0 and now.minute <= 1:
         mock_config.agents.defaults.heartbeat.active_hours = "23:58-23:59"
 
-    with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-         patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
         await run_heartbeat_task(command_bus)
         # Should NOT put second message on bus
         assert command_bus.empty()
 
 @pytest.mark.asyncio
 async def test_run_heartbeat_midnight_crossing(tmp_path, mock_config, mock_audit_logger):
-    mock_root = tmp_path / ".auric"
+    mock_root = tmp_path / ".kyberos"
     mock_root.mkdir()
     
     hb = HeartbeatManager.get_instance()
     hb.audit_logger = mock_audit_logger
     
     # Mock current time to 01:00
-    with patch("auric.core.heartbeat.datetime") as mock_dt:
+    with patch("kyberos.core.heartbeat.datetime") as mock_dt:
         mock_dt.now.return_value = datetime.now().replace(hour=1, minute=0)
         mock_dt.min = datetime.min
         mock_dt.combine = datetime.combine
@@ -159,8 +159,8 @@ async def test_run_heartbeat_midnight_crossing(tmp_path, mock_config, mock_audit
         # Scenario: Start 22:00, End 04:00 (Crosses midnight)
         mock_config.agents.defaults.heartbeat.active_hours = "22:00-04:00"
         
-        with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-             patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+        with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+             patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
             await run_heartbeat_task()
             # Status should be ALIVE (01:00 is between 22:00 and 04:00)
             mock_audit_logger.log_heartbeat.assert_awaited()
@@ -171,8 +171,8 @@ async def test_run_heartbeat_midnight_crossing(tmp_path, mock_config, mock_audit
         # Scenario: Start 04:00, End 22:00 (Doesn't cross midnight, should skip 01:00)
         mock_audit_logger.log_heartbeat.reset_mock()
         mock_config.agents.defaults.heartbeat.active_hours = "04:00-22:00"
-        with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-             patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+        with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+             patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
             await run_heartbeat_task()
             call_args = mock_audit_logger.log_heartbeat.call_args
             assert call_args.kwargs["status"] == "SKIPPED"
@@ -181,8 +181,8 @@ async def test_run_heartbeat_midnight_crossing(tmp_path, mock_config, mock_audit
         mock_dt.now.return_value = datetime.now().replace(hour=12, minute=0)
         mock_audit_logger.log_heartbeat.reset_mock()
         mock_config.agents.defaults.heartbeat.active_hours = "22:00-04:00"
-        with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-             patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+        with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+             patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
             await run_heartbeat_task()
             # Status should be SKIPPED (12:00 is NOT between 22:00 and 04:00)
             call_args = mock_audit_logger.log_heartbeat.call_args
@@ -194,7 +194,7 @@ async def test_run_heartbeat_parsing_error(mock_config, mock_audit_logger, caplo
     hb = HeartbeatManager.get_instance()
     hb.audit_logger = mock_audit_logger
     
-    with patch("auric.core.heartbeat.load_config", return_value=mock_config):
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config):
         await run_heartbeat_task()
         assert "Could not parse active hours" in caplog.text
         # Should fail open (status ALIVE)
@@ -203,7 +203,7 @@ async def test_run_heartbeat_parsing_error(mock_config, mock_audit_logger, caplo
 
 @pytest.mark.asyncio
 async def test_run_heartbeat_no_pending_tasks(tmp_path, mock_config, mock_audit_logger):
-    mock_root = tmp_path / ".auric"
+    mock_root = tmp_path / ".kyberos"
     mock_root.mkdir()
     hb_file = mock_root / "HEARTBEAT.md"
     hb_file.write_text("No dashes here")
@@ -213,14 +213,14 @@ async def test_run_heartbeat_no_pending_tasks(tmp_path, mock_config, mock_audit_
     mock_config.agents.defaults.heartbeat.active_hours = "00:00-23:59"
     
     command_bus = asyncio.Queue()
-    with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-         patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
         await run_heartbeat_task(command_bus)
         assert command_bus.empty()
 
 @pytest.mark.asyncio
 async def test_run_heartbeat_bus_error(tmp_path, mock_config, mock_audit_logger, caplog):
-    mock_root = tmp_path / ".auric"
+    mock_root = tmp_path / ".kyberos"
     mock_root.mkdir()
     hb_file = mock_root / "HEARTBEAT.md"
     hb_file.write_text("- some task")
@@ -232,14 +232,14 @@ async def test_run_heartbeat_bus_error(tmp_path, mock_config, mock_audit_logger,
     mock_bus = MagicMock()
     mock_bus.put.side_effect = Exception("Queue full or whatever")
     
-    with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-         patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
         await run_heartbeat_task(mock_bus)
         assert "Heartbeat Bus Error: Queue full" in caplog.text
 
 @pytest.mark.asyncio
 async def test_run_heartbeat_no_bus(tmp_path, mock_config, mock_audit_logger, caplog):
-    mock_root = tmp_path / ".auric"
+    mock_root = tmp_path / ".kyberos"
     mock_root.mkdir()
     hb_file = mock_root / "HEARTBEAT.md"
     hb_file.write_text("- some task")
@@ -248,14 +248,14 @@ async def test_run_heartbeat_no_bus(tmp_path, mock_config, mock_audit_logger, ca
     hb.audit_logger = mock_audit_logger
     mock_config.agents.defaults.heartbeat.active_hours = "00:00-23:59"
     
-    with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-         patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
         await run_heartbeat_task(None)
         assert "Heartbeat: No command_bus connection!" in caplog.text
 
 @pytest.mark.asyncio
 async def test_run_heartbeat_no_file(tmp_path, mock_config, mock_audit_logger):
-    mock_root = tmp_path / ".auric"
+    mock_root = tmp_path / ".kyberos"
     mock_root.mkdir()
     # No HEARTBEAT.md
     
@@ -263,8 +263,8 @@ async def test_run_heartbeat_no_file(tmp_path, mock_config, mock_audit_logger):
     hb.audit_logger = mock_audit_logger
     mock_config.agents.defaults.heartbeat.active_hours = "00:00-23:59"
     
-    with patch("auric.core.heartbeat.load_config", return_value=mock_config), \
-         patch("auric.core.heartbeat.AURIC_ROOT", mock_root):
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", mock_root):
         await run_heartbeat_task(asyncio.Queue())
         # Should just return without error
         pass

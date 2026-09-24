@@ -1,5 +1,5 @@
 """
-Unit tests for auric.memory.vector_store.VectorStore.
+Unit tests for kyberos.memory.vector_store.VectorStore.
 
 Tests cover:
 - ABC contract: cannot instantiate directly, all 6 methods are abstract
@@ -14,7 +14,7 @@ import pytest
 from abc import ABC
 from typing import List, Dict, Any
 
-from auric.memory.vector_store import VectorStore
+from kyberos.memory.vector_store import VectorStore
 
 
 # ===========================================================================
@@ -229,5 +229,5 @@ class TestChromaStoreIsVectorStore:
     """Verify that the project's concrete ChromaStore is a valid subclass."""
 
     def test_chromastore_is_subclass(self):
-        from auric.memory.chroma_store import ChromaStore
+        from kyberos.memory.chroma_store import ChromaStore
         assert issubclass(ChromaStore, VectorStore)

@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
-from auric.core.session_router import SessionRouter
+from kyberos.core.session_router import SessionRouter
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def test_init_with_path(temp_storage):
 
 
 def test_init_without_path(tmp_path):
-    with patch("auric.core.session_router.AURIC_ROOT", tmp_path):
+    with patch("kyberos.core.session_router.KYBEROS_ROOT", tmp_path):
         router = SessionRouter()
         assert router.storage_path == tmp_path / "active_sessions.json"
 

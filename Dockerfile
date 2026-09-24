@@ -27,4 +27,4 @@ RUN uv sync --python 3.12 --frozen --no-cache
 COPY . .
 
 # 9. Start your bot using 'uv run' so it uses the environment it just built
-CMD ["uv", "run", "auric", "start"]
+CMD ["uv", "run", "kyberos", "start"]

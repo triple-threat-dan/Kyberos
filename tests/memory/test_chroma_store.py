@@ -1,5 +1,5 @@
 """
-Unit tests for auric.memory.chroma_store.ChromaStore.
+Unit tests for kyberos.memory.chroma_store.ChromaStore.
 
 Tests cover:
 - Module-level: CHROMADB_AVAILABLE flag, ImportError / generic Exception handling
@@ -42,9 +42,9 @@ def _make_store(tmp_path, collection_name="test_collection"):
     mock_chromadb, mock_client, mock_collection = _make_mock_chromadb()
 
     with patch.dict("sys.modules", {"chromadb": mock_chromadb}), \
-         patch("auric.memory.chroma_store.chromadb", mock_chromadb, create=True), \
-         patch("auric.memory.chroma_store.CHROMADB_AVAILABLE", True):
-        from auric.memory.chroma_store import ChromaStore
+         patch("kyberos.memory.chroma_store.chromadb", mock_chromadb, create=True), \
+         patch("kyberos.memory.chroma_store.CHROMADB_AVAILABLE", True):
+        from kyberos.memory.chroma_store import ChromaStore
         store = ChromaStore(
             collection_name=collection_name,
             persistence_path=tmp_path / "chroma_db",
@@ -61,7 +61,7 @@ def _make_store(tmp_path, collection_name="test_collection"):
 class TestModuleLevelImport:
 
     def test_chromadb_available_flag_exists(self):
-        from auric.memory.chroma_store import CHROMADB_AVAILABLE
+        from kyberos.memory.chroma_store import CHROMADB_AVAILABLE
         assert isinstance(CHROMADB_AVAILABLE, bool)
 
 
@@ -73,12 +73,12 @@ class TestModuleLevelImport:
 class TestVectorStoreInterface:
 
     def test_is_subclass_of_vector_store(self):
-        from auric.memory.chroma_store import ChromaStore
-        from auric.memory.vector_store import VectorStore
+        from kyberos.memory.chroma_store import ChromaStore
+        from kyberos.memory.vector_store import VectorStore
         assert issubclass(ChromaStore, VectorStore)
 
     def test_instance_is_vector_store(self, tmp_path):
-        from auric.memory.vector_store import VectorStore
+        from kyberos.memory.vector_store import VectorStore
         store, _, _ = _make_store(tmp_path)
         assert isinstance(store, VectorStore)
 
@@ -103,9 +103,9 @@ class TestChromaStoreInit:
         persistence = tmp_path / "chroma_db"
 
         with patch.dict("sys.modules", {"chromadb": mock_chromadb}), \
-             patch("auric.memory.chroma_store.chromadb", mock_chromadb, create=True), \
-             patch("auric.memory.chroma_store.CHROMADB_AVAILABLE", True):
-            from auric.memory.chroma_store import ChromaStore
+             patch("kyberos.memory.chroma_store.chromadb", mock_chromadb, create=True), \
+             patch("kyberos.memory.chroma_store.CHROMADB_AVAILABLE", True):
+            from kyberos.memory.chroma_store import ChromaStore
             store = ChromaStore(persistence_path=persistence)
 
         mock_chromadb.PersistentClient.assert_called_once_with(path=str(persistence))
@@ -122,22 +122,22 @@ class TestChromaStoreInit:
         store, mock_client, _ = _make_store(tmp_path)
         assert store.client is mock_client
 
-    def test_default_persistence_path_uses_auric_root(self):
+    def test_default_persistence_path_uses_kyberosroot(self):
         mock_chromadb, _, _ = _make_mock_chromadb()
 
         with patch.dict("sys.modules", {"chromadb": mock_chromadb}), \
-             patch("auric.memory.chroma_store.chromadb", mock_chromadb, create=True), \
-             patch("auric.memory.chroma_store.CHROMADB_AVAILABLE", True), \
-             patch("auric.memory.chroma_store.AURIC_ROOT", Path("/fake/root")):
-            from auric.memory.chroma_store import ChromaStore
+             patch("kyberos.memory.chroma_store.chromadb", mock_chromadb, create=True), \
+             patch("kyberos.memory.chroma_store.CHROMADB_AVAILABLE", True), \
+             patch("kyberos.memory.chroma_store.KYBEROS_ROOT", Path("/fake/root")):
+            from kyberos.memory.chroma_store import ChromaStore
             store = ChromaStore()
 
         assert store.persistence_path == Path("/fake/root/chroma_db")
 
     def test_raises_when_chromadb_unavailable(self):
-        with patch("auric.memory.chroma_store.CHROMADB_AVAILABLE", False), \
-             patch("auric.memory.chroma_store.CHROMADB_ERROR", "no module", create=True):
-            from auric.memory.chroma_store import ChromaStore
+        with patch("kyberos.memory.chroma_store.CHROMADB_AVAILABLE", False), \
+             patch("kyberos.memory.chroma_store.CHROMADB_ERROR", "no module", create=True):
+            from kyberos.memory.chroma_store import ChromaStore
             with pytest.raises(RuntimeError, match="ChromaDB is not available"):
                 ChromaStore(persistence_path=Path("/tmp/db"))
 
@@ -146,9 +146,9 @@ class TestChromaStoreInit:
         mock_chromadb.PersistentClient.side_effect = RuntimeError("disk full")
 
         with patch.dict("sys.modules", {"chromadb": mock_chromadb}), \
-             patch("auric.memory.chroma_store.chromadb", mock_chromadb, create=True), \
-             patch("auric.memory.chroma_store.CHROMADB_AVAILABLE", True):
-            from auric.memory.chroma_store import ChromaStore
+             patch("kyberos.memory.chroma_store.chromadb", mock_chromadb, create=True), \
+             patch("kyberos.memory.chroma_store.CHROMADB_AVAILABLE", True):
+            from kyberos.memory.chroma_store import ChromaStore
             with pytest.raises(RuntimeError, match="disk full"):
                 ChromaStore(persistence_path=Path("/tmp/db"))
 
@@ -159,9 +159,9 @@ class TestChromaStoreInit:
         mock_chromadb.PersistentClient.return_value = mock_client
 
         with patch.dict("sys.modules", {"chromadb": mock_chromadb}), \
-             patch("auric.memory.chroma_store.chromadb", mock_chromadb, create=True), \
-             patch("auric.memory.chroma_store.CHROMADB_AVAILABLE", True):
-            from auric.memory.chroma_store import ChromaStore
+             patch("kyberos.memory.chroma_store.chromadb", mock_chromadb, create=True), \
+             patch("kyberos.memory.chroma_store.CHROMADB_AVAILABLE", True):
+            from kyberos.memory.chroma_store import ChromaStore
             with pytest.raises(ValueError, match="bad name"):
                 ChromaStore(persistence_path=Path("/tmp/db"))
 
@@ -433,7 +433,7 @@ class TestDelete:
         mock_col.delete.side_effect = RuntimeError("oops")
 
         import logging
-        with caplog.at_level(logging.ERROR, logger="auric.memory.chroma"):
+        with caplog.at_level(logging.ERROR, logger="kyberos.memory.chroma"):
             store.delete("bad")
 
         assert any("Failed to delete bad" in record.message for record in caplog.records)
@@ -468,7 +468,7 @@ class TestDeleteByMetadata:
         mock_col.delete.side_effect = RuntimeError("filter fail")
 
         import logging
-        with caplog.at_level(logging.ERROR, logger="auric.memory.chroma"):
+        with caplog.at_level(logging.ERROR, logger="kyberos.memory.chroma"):
             store.delete_by_metadata({"key": "val"})
 
         assert any("Failed to delete by metadata" in record.message for record in caplog.records)
@@ -504,7 +504,7 @@ class TestWipe:
         mock_client.delete_collection.side_effect = RuntimeError("wipe fail")
 
         import logging
-        with caplog.at_level(logging.ERROR, logger="auric.memory.chroma"):
+        with caplog.at_level(logging.ERROR, logger="kyberos.memory.chroma"):
             store.wipe()
 
         assert any("Failed to wipe store" in record.message for record in caplog.records)
