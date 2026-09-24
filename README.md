@@ -159,6 +159,7 @@ Providers can include:
 * Anthropic
 * Google Gemini
 * OpenRouter
+* Amazon Bedrock
 * local models
 * Ollama
 
@@ -323,6 +324,32 @@ Configuration can be opened from the CLI:
 kyberos config
 ```
 
+### Amazon Bedrock
+
+Bedrock is optional. Install its AWS SDK dependency with `uv sync --extra bedrock` (include `--dev` when setting up for development). In `.kyberos/kyberos.json`, set a model tier's provider to `bedrock` and use a LiteLLM Bedrock model ID, such as `bedrock/amazon.nova-pro-v1:0` or `bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0`:
+
+```json
+{
+  "agents": {
+    "models": {
+      "smart_model": {
+        "provider": "bedrock",
+        "model": "bedrock/amazon.nova-pro-v1:0",
+        "enabled": true
+      }
+    }
+  },
+  "keys": {
+    "bedrock_access_key_id": "YOUR_AWS_ACCESS_KEY_ID",
+    "bedrock_secret_access_key": "YOUR_AWS_SECRET_ACCESS_KEY",
+    "bedrock_session_token": "YOUR_AWS_SESSION_TOKEN",
+    "bedrock_region": "us-east-1"
+  }
+}
+```
+
+For long-term IAM credentials, omit `bedrock_session_token`. Alternatively, set `keys.bedrock` to an Amazon Bedrock API key, or omit Bedrock credentials to use the standard AWS SDK credential chain. Set the AWS region in `bedrock_region` when using explicit credentials.
+
 ---
 
 ## Runtime State
@@ -397,7 +424,7 @@ OpenAuric's Git history has been preserved as the foundation of Kyberos.
 
 ## Roadmap
 
-* [ ] Complete OpenAuric → Kyberos v2 migration
+* [DONE] Complete OpenAuric → Kyberos v2 migration
 * [ ] Implement Timeline-backed historical context
 * [ ] Standardize the Skills subsystem
 * [ ] Standardize external integrations as Protocols

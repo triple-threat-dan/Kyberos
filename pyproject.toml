@@ -30,6 +30,9 @@ dependencies = [
 [project.scripts]
 kyberos = "kyberos.cli:app"
 
+[project.optional-dependencies]
+bedrock = ["boto3>=1.28.57"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

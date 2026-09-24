@@ -79,6 +79,7 @@ class LLMGateway:
         
         # Determine API key based on provider
         api_key = self._resolve_api_key(provider, model)
+        call_kwargs = {**self._resolve_provider_kwargs(provider, model), **kwargs}
         
         try:
             start_time = time.time()
@@ -86,9 +87,9 @@ class LLMGateway:
             if check_local:
                 logger.debug(f"Acquiring local semaphore for model: {model}")
                 async with self._local_semaphore:
-                    response = await self._call_model(model, messages, api_key, **kwargs)
+                    response = await self._call_model(model, messages, api_key, **call_kwargs)
             else:
-                response = await self._call_model(model, messages, api_key, **kwargs)
+                response = await self._call_model(model, messages, api_key, **call_kwargs)
             
             duration = (time.time() - start_time) * 1000
             
@@ -122,6 +123,8 @@ class LLMGateway:
         # 2. Fallback heuristics
         if "openrouter" in provider or "openrouter" in model:
             return self.keys.openrouter
+        if "bedrock" in provider or "bedrock" in model:
+            return self.keys.bedrock
         if "openai" in provider or "gpt" in model:
             return self.keys.openai
         if "anthropic" in provider or "claude" in model:
@@ -130,6 +133,19 @@ class LLMGateway:
             return self.keys.gemini
             
         return None
+
+    def _resolve_provider_kwargs(self, provider: str, model: str) -> Dict[str, str]:
+        """Returns configured provider-specific authentication options."""
+        if "bedrock" not in provider.lower() and "bedrock" not in model.lower():
+            return {}
+
+        configured = {
+            "aws_access_key_id": self.keys.bedrock_access_key_id,
+            "aws_secret_access_key": self.keys.bedrock_secret_access_key,
+            "aws_session_token": self.keys.bedrock_session_token,
+            "aws_region_name": self.keys.bedrock_region,
+        }
+        return {name: value for name, value in configured.items() if value}
 
     async def _log_interaction(self, response: Any, messages: List[Dict], model: str, duration: float, session_id: Optional[str]):
         """Logs the LLM interaction to the audit logger."""
