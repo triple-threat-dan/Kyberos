@@ -8,12 +8,12 @@ from textual.app import App
 from fastapi import FastAPI
 from uvicorn import Server
 
-from auric.core import daemon
-from auric.core.config import AuricConfig
+from kyberos.core import daemon
+from kyberos.core.config import KyberosConfig
 
 @pytest.fixture
 def mock_config():
-    config = AuricConfig()
+    config = KyberosConfig()
     config.gateway.web_ui_token = "test_token"
     config.gateway.disable_access_log = True
     config.agents.dream_time = "04:00"
@@ -28,22 +28,22 @@ def mock_api_app():
 @pytest.fixture
 def mock_dependencies(mock_config):
     """Mocks all the external dependencies and subsystems initialized by daemon."""
-    with patch("auric.core.daemon.load_config", return_value=mock_config), \
-         patch("auric.core.bootstrap.ensure_workspace"), \
-         patch("auric.core.daemon.AuditLogger") as MockAuditLogger, \
-         patch("auric.core.heartbeat.HeartbeatManager") as MockHeartbeatManager, \
-         patch("auric.core.heartbeat.run_heartbeat_task"), \
-         patch("auric.core.daemon.AsyncIOScheduler") as MockScheduler, \
-         patch("auric.interface.pact_manager.PactManager") as MockPactManager, \
+    with patch("kyberos.core.daemon.load_config", return_value=mock_config), \
+         patch("kyberos.core.bootstrap.ensure_workspace"), \
+         patch("kyberos.core.daemon.AuditLogger") as MockAuditLogger, \
+         patch("kyberos.core.heartbeat.HeartbeatManager") as MockHeartbeatManager, \
+         patch("kyberos.core.heartbeat.run_heartbeat_task"), \
+         patch("kyberos.core.daemon.AsyncIOScheduler") as MockScheduler, \
+         patch("kyberos.interface.protocol_manager.ProtocolManager") as MockProtocolManager, \
          patch("uvicorn.Server.serve", new_callable=AsyncMock) as mock_serve, \
-         patch("auric.brain.llm_gateway.LLMGateway") as MockLLMGateway, \
-         patch("auric.memory.librarian.GrimoireLibrarian") as MockLibrarian, \
-         patch("auric.memory.focus_manager.FocusManager") as MockFocusManager, \
-         patch("auric.spells.tool_registry.ToolRegistry") as MockToolRegistry, \
-         patch("auric.core.session_router.SessionRouter") as MockSessionRouter, \
-         patch("auric.brain.rlm.RLMEngine") as MockRLMEngine, \
-         patch("auric.memory.chronicles.perform_dream_cycle"), \
-         patch("auric.core.daemon.Path.exists", return_value=True): # For static files
+         patch("kyberos.brain.llm_gateway.LLMGateway") as MockLLMGateway, \
+         patch("kyberos.memory.librarian.ArchiveLibrarian") as MockLibrarian, \
+         patch("kyberos.memory.thread_manager.ThreadManager") as MockThreadManager, \
+         patch("kyberos.skills.tool_registry.ToolRegistry") as MockToolRegistry, \
+         patch("kyberos.core.session_router.SessionRouter") as MockSessionRouter, \
+         patch("kyberos.brain.rlm.RLMEngine") as MockRLMEngine, \
+         patch("kyberos.memory.timeline.perform_dream_cycle"), \
+         patch("kyberos.core.daemon.Path.exists", return_value=True): # For static files
 
         # Setup mock audit logger
         audit_logger = MockAuditLogger.return_value
@@ -56,11 +56,11 @@ def mock_dependencies(mock_config):
         # Setup mock scheduler
         scheduler = MockScheduler.return_value
         
-        # Setup mock pact manager
-        pact_manager = MockPactManager.return_value
-        pact_manager.start = AsyncMock()
-        pact_manager.stop = AsyncMock()
-        pact_manager.trigger_typing = AsyncMock()
+        # Setup mock protocol manager
+        protocol_manager = MockProtocolManager.return_value
+        protocol_manager.start = AsyncMock()
+        protocol_manager.stop = AsyncMock()
+        protocol_manager.trigger_typing = AsyncMock()
 
         # Setup mock librarian
         librarian = MockLibrarian.return_value
@@ -73,8 +73,8 @@ def mock_dependencies(mock_config):
         yield {
             "audit_logger": audit_logger,
             "scheduler": scheduler,
-            "pact_manager": pact_manager,
-            "MockPactManager": MockPactManager,
+            "protocol_manager": protocol_manager,
+            "MockProtocolManager": MockProtocolManager,
             "serve": mock_serve,
             "session_router": MockSessionRouter.return_value,
             "MockSessionRouter": MockSessionRouter,
@@ -88,7 +88,7 @@ async def test_run_daemon_initialization(mock_dependencies, mock_api_app):
     
     # We want to run the daemon but not infinitely, so we'll mock the wait event
     # inside run_daemon to raise CancelledError immediately after startup.
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
         await daemon.run_daemon(None, mock_api_app)
 
     # Verify dependencies initialized
@@ -96,7 +96,7 @@ async def test_run_daemon_initialization(mock_dependencies, mock_api_app):
     assert hasattr(mock_api_app.state, "web_chat_history")
     
     mock_dependencies["audit_logger"].init_db.assert_awaited_once()
-    mock_dependencies["pact_manager"].start.assert_awaited_once()
+    mock_dependencies["protocol_manager"].start.assert_awaited_once()
     mock_dependencies["scheduler"].start.assert_called_once()
     
     # Check that uvicorn serve task was started (we cancel too fast so it might not be awaited here,
@@ -109,8 +109,8 @@ async def test_run_daemon_web_token_generation(mock_dependencies, mock_api_app, 
     """Test generating a web token if none exists."""
     mock_config.gateway.web_ui_token = None
     
-    with patch("auric.core.config.ConfigLoader.save") as mock_save, \
-         patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+    with patch("kyberos.core.config.ConfigLoader.save") as mock_save, \
+         patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
         await daemon.run_daemon(None, mock_api_app)
         
     mock_save.assert_called_once()
@@ -140,7 +140,7 @@ async def test_run_daemon_heartbeat_intervals(mock_dependencies, mock_api_app, m
         ("invalid", {"minutes": 30}),
     ]:
         mock_config.agents.defaults.heartbeat.interval = interval
-        with patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+        with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
             await daemon.run_daemon(None, mock_api_app)
             
             # The scheduler.add_job is called multiple times (heartbeat, memory, dream cycle).
@@ -161,8 +161,8 @@ async def test_run_daemon_missing_static_dir(mock_dependencies, mock_api_app):
     """Test creating static dir when missing."""
     mock_static = MagicMock()
     mock_static.exists.return_value = False
-    with patch("auric.core.daemon.STATIC_PATH", mock_static), \
-         patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+    with patch("kyberos.core.daemon.STATIC_PATH", mock_static), \
+         patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
          await daemon.run_daemon(None, mock_api_app)
          mock_static.mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
@@ -170,7 +170,7 @@ async def test_run_daemon_missing_static_dir(mock_dependencies, mock_api_app):
 async def test_run_daemon_no_last_session(mock_dependencies, mock_api_app):
     """Test initializing a new session UUID when no last session found."""
     mock_dependencies["audit_logger"].get_last_active_session_id.return_value = None
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
          await daemon.run_daemon(None, mock_api_app)
          assert mock_api_app.state.current_session_id is not None
 
@@ -178,7 +178,7 @@ async def test_run_daemon_no_last_session(mock_dependencies, mock_api_app):
 async def test_run_daemon_dream_time_invalid(mock_dependencies, mock_api_app, mock_config, caplog):
     """Test handling of invalid dream time."""
     mock_config.agents.dream_time = "invalid:time"
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
          await daemon.run_daemon(None, mock_api_app)
          assert "Invalid dream_time format" in caplog.text
 
@@ -186,7 +186,7 @@ async def test_run_daemon_dream_time_invalid(mock_dependencies, mock_api_app, mo
 async def test_run_daemon_access_log_enabled(mock_dependencies, mock_api_app, mock_config):
     """Test endpoint filter registration when access log is not disabled."""
     mock_config.gateway.disable_access_log = False
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
          await daemon.run_daemon(None, mock_api_app)
          # EndpointFilter should have been instantiated implicitly
          assert mock_api_app.state.config == mock_config
@@ -201,7 +201,7 @@ async def test_run_daemon_safe_serve_systemexit(mock_dependencies, mock_api_app,
         await asyncio.sleep(0.01)
         raise asyncio.CancelledError()
         
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=side_effect_delay):
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=side_effect_delay):
          await daemon.run_daemon(None, mock_api_app)
          
     # Check that error was logged
@@ -210,42 +210,42 @@ async def test_run_daemon_safe_serve_systemexit(mock_dependencies, mock_api_app,
 from fastapi.testclient import TestClient
 
 @pytest.mark.asyncio
-async def test_reload_spells_endpoint_success(mock_dependencies, mock_api_app):
-    """Test the POST /spells/reload endpoint."""
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+async def test_reload_skills_endpoint_success(mock_dependencies, mock_api_app):
+    """Test the POST /skills/reload endpoint."""
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
         await daemon.run_daemon(None, mock_api_app)
         
     client = TestClient(mock_api_app)
     
-    # Mock registry loaded spells
+    # Mock registry loaded skills
     mock_registry = mock_api_app.state.tool_registry
-    mock_registry._spells = {"spell1": 1, "spell2": 2}
+    mock_registry._skills = {"spell1": 1, "spell2": 2}
     
-    response = client.post("/spells/reload")
+    response = client.post("/skills/reload")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "count": 2}
-    mock_registry.load_spells.assert_called_once()
+    mock_registry.load_skills.assert_called_once()
 
-def test_reload_spells_endpoint_no_registry():
-    """Test the POST /spells/reload endpoint when tools not initialized."""
+def test_reload_skills_endpoint_no_registry():
+    """Test the POST /skills/reload endpoint when tools not initialized."""
     # We create a fresh app with NO state.tool_registry
     app = FastAPI()
     
     # Mount just the reload endpoint to a dummy app to test isolation
-    @app.post("/spells/reload")
-    async def reload_spells():
+    @app.post("/skills/reload")
+    async def reload_skills():
         try:
             registry = getattr(app.state, "tool_registry", None)
             if registry:
-                registry.load_spells()
-                return {"status": "ok", "count": len(registry._spells)}
+                registry.load_skills()
+                return {"status": "ok", "count": len(registry._skills)}
             else:
                  return {"status": "error", "message": "ToolRegistry not initialized yet."}
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
     client = TestClient(app)
-    response = client.post("/spells/reload")
+    response = client.post("/skills/reload")
     assert response.status_code == 200
     assert response.json() == {"status": "error", "message": "ToolRegistry not initialized yet."}
 
@@ -272,7 +272,7 @@ async def test_run_daemon_message_loops(mock_dependencies, mock_api_app, capsys)
             "source": "HEARTBEAT"
         })
 
-        # Test 3: Simulate PACT source message
+        # Test 3: Simulate PROTOCOL source message
         mock_event = MagicMock()
         mock_event.platform = "discord"
         mock_event.sender_id = "123"
@@ -281,7 +281,7 @@ async def test_run_daemon_message_loops(mock_dependencies, mock_api_app, capsys)
         
         # Make the SessionRouter return a session ID
         mock_dependencies["session_router"].get_active_session_id = MagicMock(return_value=None)
-        mock_dependencies["session_router"].start_new_session = MagicMock(return_value="pact_session_id")
+        mock_dependencies["session_router"].start_new_session = MagicMock(return_value="protocol_session_id")
 
         await bus.put({
             "type": "user_query",
@@ -291,26 +291,26 @@ async def test_run_daemon_message_loops(mock_dependencies, mock_api_app, capsys)
         # Let the brain process
         await asyncio.sleep(0.2)
         
-        # We can extract the internal_bus from the pact_manager.call_args 
+        # We can extract the internal_bus from the protocol_manager.call_args 
         # (It's passed in as the 4th argument)
-        from auric.interface.pact_manager import PactManager
+        from kyberos.interface.protocol_manager import ProtocolManager
         
-        # Note: We mocked PactManager at auric.interface.pact_manager.PactManager
+        # Note: We mocked ProtocolManager at kyberos.interface.protocol_manager.ProtocolManager
         # We can try to grab the bus from api_app.state if it was there, but it's not.
         # But wait, internal_bus is used in log_to_bus right? Yes.
-        # But PactManager was passed internal_bus inside daemon.py:
-        # pact_manager = PactManager(config, audit_logger, command_bus, internal_bus)
-        pass # To capture internal_bus we must inspect the MockPactManager constructor call instead of the instance
+        # But ProtocolManager was passed internal_bus inside daemon.py:
+        # protocol_manager = ProtocolManager(config, audit_logger, command_bus, internal_bus)
+        pass # To capture internal_bus we must inspect the MockProtocolManager constructor call instead of the instance
         
         raise asyncio.CancelledError()
         
-    with patch("auric.interface.pact_manager.PactManager") as MockPactManagerClass, \
-         patch("auric.core.daemon.asyncio.Event.wait", side_effect=side_effect_delay):
+    with patch("kyberos.interface.protocol_manager.ProtocolManager") as MockProtocolManagerClass, \
+         patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=side_effect_delay):
          
-         # Need to put the mock pact manager back since we overshadowed it with a local patch
-         mock_pact_manager_instance = MockPactManagerClass.return_value
-         mock_pact_manager_instance.start = AsyncMock()
-         mock_pact_manager_instance.stop = AsyncMock()
+         # Need to put the mock protocol manager back since we overshadowed it with a local patch
+         mock_protocol_manager_instance = MockProtocolManagerClass.return_value
+         mock_protocol_manager_instance.start = AsyncMock()
+         mock_protocol_manager_instance.stop = AsyncMock()
          
          # We will inject messages into internal_bus once we capture it
          async def inject_internal(bus):
@@ -331,15 +331,15 @@ async def test_run_daemon_message_loops(mock_dependencies, mock_api_app, capsys)
               await asyncio.sleep(0.02)
               
               # Extract internal_bus
-              if MockPactManagerClass.call_count > 0:
-                  internal_bus = MockPactManagerClass.call_args.args[3]
+              if MockProtocolManagerClass.call_count > 0:
+                  internal_bus = MockProtocolManagerClass.call_args.args[3]
                   await inject_internal(internal_bus)
               
               await asyncio.sleep(0.05)
               raise asyncio.CancelledError()
          
          # Apply the updated mock to Event.wait
-         with patch("auric.core.daemon.asyncio.Event.wait", side_effect=side_effect_with_internal):
+         with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=side_effect_with_internal):
              await daemon.run_daemon(None, mock_api_app)
          
     # Check that brain_loop dispatched internal bus logs correctly
@@ -347,8 +347,8 @@ async def test_run_daemon_message_loops(mock_dependencies, mock_api_app, capsys)
     
     # Check that RLM engine received the web message to think about
 @pytest.mark.asyncio
-async def test_run_daemon_message_errors_and_pacts(mock_dependencies, mock_api_app, mock_config, capsys, caplog):
-    """Test the brain_loop handling of PACTs, heartbeat errors, dispatcher errors, and loop crashes."""
+async def test_run_daemon_message_errors_and_protocols(mock_dependencies, mock_api_app, mock_config, capsys, caplog):
+    """Test the brain_loop handling of PROTOCOLs, heartbeat errors, dispatcher errors, and loop crashes."""
     
     # 1. Invalid heartbeat format triggers ValueError handler
     mock_config.agents.defaults.heartbeat.interval = "invalidh" # triggers string split int parsing ValueError
@@ -356,7 +356,7 @@ async def test_run_daemon_message_errors_and_pacts(mock_dependencies, mock_api_a
     async def side_effect_delay():
         bus = mock_api_app.state.command_bus
         
-        # Test 1: Simulate PACT source message (DM instead of channel)
+        # Test 1: Simulate PROTOCOL source message (DM instead of channel)
         mock_event = MagicMock()
         mock_event.platform = "discord"
         mock_event.sender_id = "123"
@@ -366,9 +366,9 @@ async def test_run_daemon_message_errors_and_pacts(mock_dependencies, mock_api_a
         mock_dependencies["session_router"].get_active_session_id = MagicMock(return_value=None)
         mock_dependencies["session_router"].start_new_session = MagicMock(return_value="dm_session_id")
         
-        pact_adapter = AsyncMock()
-        pact_adapter.send_message = AsyncMock() # Ensure it's awaitable
-        mock_dependencies["pact_manager"].adapters = {"discord": pact_adapter}
+        protocol_adapter = AsyncMock()
+        protocol_adapter.send_message = AsyncMock() # Ensure it's awaitable
+        mock_dependencies["protocol_manager"].adapters = {"discord": protocol_adapter}
         
         # Setup think side effect to trigger log_to_bus
         async def mock_think(msg, **kwargs):
@@ -402,9 +402,9 @@ async def test_run_daemon_message_errors_and_pacts(mock_dependencies, mock_api_a
              await asyncio.sleep(0.05)
                   
         # Trigger dispatcher exception (lines 354-356)
-        if mock_dependencies["MockPactManager"].called:
+        if mock_dependencies["MockProtocolManager"].called:
              # Extract internal_bus from the constructor call
-             internal_bus = mock_dependencies["MockPactManager"].call_args.args[3]
+             internal_bus = mock_dependencies["MockProtocolManager"].call_args.args[3]
              class ExplodingMsg:
                  def __str__(self): raise Exception("Dispatcher Boom")
              await internal_bus.put(ExplodingMsg())
@@ -412,19 +412,19 @@ async def test_run_daemon_message_errors_and_pacts(mock_dependencies, mock_api_a
 
         raise asyncio.CancelledError()
         
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=side_effect_delay):
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=side_effect_delay):
          await daemon.run_daemon(None, mock_api_app)
          
-    # Reload Spells Exception check
+    # Reload Skills Exception check
     client = TestClient(mock_api_app)
-    mock_api_app.state.tool_registry.load_spells.side_effect = Exception("registry error")
-    response = client.post("/spells/reload") # Should hit lines 110-111
+    mock_api_app.state.tool_registry.load_skills.side_effect = Exception("registry error")
+    response = client.post("/skills/reload") # Should hit lines 110-111
     assert response.json() == {"status": "error", "message": "registry error"}
     
     # Hit line 109 (ToolRegistry not initialized yet)
     if hasattr(mock_api_app.state, "tool_registry"):
         del mock_api_app.state.tool_registry
-    response2 = client.post("/spells/reload")
+    response2 = client.post("/skills/reload")
     assert response2.json() == {"status": "error", "message": "ToolRegistry not initialized yet."}
 
 @pytest.mark.asyncio
@@ -442,8 +442,8 @@ async def test_dispatcher_exception(mock_dependencies, mock_api_app):
             raise Exception("loop crash")
         raise asyncio.CancelledError()
 
-    with patch("auric.core.daemon.asyncio.Queue.get", side_effect=mock_queue_get):
-         with patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+    with patch("kyberos.core.daemon.asyncio.Queue.get", side_effect=mock_queue_get):
+         with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
              await daemon.run_daemon(None, mock_api_app)
 
 @pytest.mark.asyncio
@@ -451,18 +451,18 @@ async def test_run_daemon_safe_serve_cancelled(mock_dependencies, mock_api_app):
     """Test safe_serve catching CancelledError from Uvicorn mock."""
     mock_dependencies["serve"].side_effect = asyncio.CancelledError()
     
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError):
          # wait doesn't sleep so background task might not get evaluated, mock sleep to yield context
          async def yield_control():
              await asyncio.sleep(0.01)
              raise asyncio.CancelledError()
-         with patch("auric.core.daemon.asyncio.Event.wait", side_effect=yield_control):
+         with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=yield_control):
              await daemon.run_daemon(None, mock_api_app)
 
 @pytest.mark.asyncio
 async def test_run_daemon_crash(mock_dependencies, mock_api_app, caplog):
     """Test global daemon crash catch."""
-    with patch("auric.core.daemon.asyncio.Event.wait", side_effect=Exception("Hard crash")):
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=Exception("Hard crash")):
          await daemon.run_daemon(None, mock_api_app)
     
     assert "Daemon crashed: Hard crash" in caplog.text

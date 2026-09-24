@@ -1,5 +1,5 @@
 """
-Unit tests for auric.memory.chronicles.
+Unit tests for kyberos.memory.timeline.
 
 Tests cover:
 - _append_to_file: file existence check, write behavior, return values
@@ -94,24 +94,24 @@ def _make_audit_logger(
 class TestUnescapeList:
 
     def test_basic_entities(self):
-        from auric.memory.chronicles import _unescape_list
+        from kyberos.memory.timeline import _unescape_list
         assert _unescape_list(["hello &amp; world"]) == ["hello & world"]
 
     def test_multiple_items(self):
-        from auric.memory.chronicles import _unescape_list
+        from kyberos.memory.timeline import _unescape_list
         result = _unescape_list(["&lt;b&gt;", "a &amp; b", "plain"])
         assert result == ["<b>", "a & b", "plain"]
 
     def test_empty_list(self):
-        from auric.memory.chronicles import _unescape_list
+        from kyberos.memory.timeline import _unescape_list
         assert _unescape_list([]) == []
 
     def test_numeric_entities(self):
-        from auric.memory.chronicles import _unescape_list
+        from kyberos.memory.timeline import _unescape_list
         assert _unescape_list(["line1&#10;line2"]) == ["line1\nline2"]
 
     def test_no_entities(self):
-        from auric.memory.chronicles import _unescape_list
+        from kyberos.memory.timeline import _unescape_list
         assert _unescape_list(["plain text"]) == ["plain text"]
 
 
@@ -123,7 +123,7 @@ class TestAppendToFile:
 
     @pytest.mark.asyncio
     async def test_appends_to_existing_file(self, tmp_path):
-        from auric.memory.chronicles import _append_to_file
+        from kyberos.memory.timeline import _append_to_file
         target = tmp_path / "test.md"
         target.write_text("existing\n", encoding="utf-8")
 
@@ -134,7 +134,7 @@ class TestAppendToFile:
 
     @pytest.mark.asyncio
     async def test_returns_false_if_missing(self, tmp_path):
-        from auric.memory.chronicles import _append_to_file
+        from kyberos.memory.timeline import _append_to_file
         target = tmp_path / "nonexistent.md"
 
         result = await _append_to_file(target, "data")
@@ -143,7 +143,7 @@ class TestAppendToFile:
 
     @pytest.mark.asyncio
     async def test_appends_empty_string(self, tmp_path):
-        from auric.memory.chronicles import _append_to_file
+        from kyberos.memory.timeline import _append_to_file
         target = tmp_path / "test.md"
         target.write_text("original", encoding="utf-8")
 
@@ -154,7 +154,7 @@ class TestAppendToFile:
 
     @pytest.mark.asyncio
     async def test_appends_unicode(self, tmp_path):
-        from auric.memory.chronicles import _append_to_file
+        from kyberos.memory.timeline import _append_to_file
         target = tmp_path / "test.md"
         target.write_text("", encoding="utf-8")
 
@@ -172,13 +172,13 @@ class TestDreamCycleStep1:
     @pytest.mark.asyncio
     async def test_summarizes_idle_session(self, tmp_path):
         """Session idle >5m should trigger summarize_session."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger(last_msg_time=datetime.now() - timedelta(minutes=10))
         gateway = _make_gateway()
         config = _make_config()
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             (tmp_path / "memories").mkdir()
             await perform_dream_cycle(audit, gateway, config)
 
@@ -187,13 +187,13 @@ class TestDreamCycleStep1:
     @pytest.mark.asyncio
     async def test_skips_active_session(self, tmp_path):
         """Session active <5m should NOT trigger summarize_session."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger(last_msg_time=datetime.now() - timedelta(minutes=1))
         gateway = _make_gateway()
         config = _make_config()
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             (tmp_path / "memories").mkdir()
             await perform_dream_cycle(audit, gateway, config)
 
@@ -202,13 +202,13 @@ class TestDreamCycleStep1:
     @pytest.mark.asyncio
     async def test_no_active_session(self, tmp_path):
         """No last active session should skip summarization entirely."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway()
         config = _make_config()
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             (tmp_path / "memories").mkdir()
             await perform_dream_cycle(audit, gateway, config)
 
@@ -217,13 +217,13 @@ class TestDreamCycleStep1:
     @pytest.mark.asyncio
     async def test_empty_history(self, tmp_path):
         """Session exists but no messages — should skip summarization."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger(history_empty=True)
         gateway = _make_gateway()
         config = _make_config()
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             (tmp_path / "memories").mkdir()
             await perform_dream_cycle(audit, gateway, config)
 
@@ -232,14 +232,14 @@ class TestDreamCycleStep1:
     @pytest.mark.asyncio
     async def test_summarize_error_is_caught(self, tmp_path):
         """summarize_session error should be logged, not raised."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger()
         audit.summarize_session = AsyncMock(side_effect=RuntimeError("db exploded"))
         gateway = _make_gateway()
         config = _make_config()
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             (tmp_path / "memories").mkdir()
             # Should not raise
             await perform_dream_cycle(audit, gateway, config)
@@ -247,13 +247,13 @@ class TestDreamCycleStep1:
     @pytest.mark.asyncio
     async def test_uses_heartbeat_model(self, tmp_path):
         """Should prefer heartbeat_model for session summarization."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger()
         gateway = _make_gateway()
         config = _make_config()
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             (tmp_path / "memories").mkdir()
             await perform_dream_cycle(audit, gateway, config)
 
@@ -264,7 +264,7 @@ class TestDreamCycleStep1:
     @pytest.mark.asyncio
     async def test_falls_back_to_fast_model(self, tmp_path):
         """Missing heartbeat_model should fall back to fast_model."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger()
         gateway = _make_gateway()
@@ -275,7 +275,7 @@ class TestDreamCycleStep1:
             "fast_model": SimpleNamespace(model="test-fast"),
         }
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             (tmp_path / "memories").mkdir()
             await perform_dream_cycle(audit, gateway, config)
 
@@ -293,13 +293,13 @@ class TestDreamCycleStep2:
     @pytest.mark.asyncio
     async def test_missing_daily_log_exits_early(self, tmp_path):
         """No daily log file → return early, no LLM call."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway()
         config = _make_config()
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             (tmp_path / "memories").mkdir()
             # Don't create the daily log
             await perform_dream_cycle(audit, gateway, config)
@@ -309,14 +309,14 @@ class TestDreamCycleStep2:
     @pytest.mark.asyncio
     async def test_empty_daily_log_exits_early(self, tmp_path):
         """Empty daily log → return early, no LLM call."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway()
         config = _make_config()
         today = datetime.now().strftime("%Y-%m-%d")
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             mem_dir = tmp_path / "memories"
             mem_dir.mkdir()
             (mem_dir / f"{today}.md").write_text("   \n  \n", encoding="utf-8")
@@ -328,14 +328,14 @@ class TestDreamCycleStep2:
     @pytest.mark.asyncio
     async def test_whitespace_only_log_exits_early(self, tmp_path):
         """Whitespace-only daily log → return early."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway()
         config = _make_config()
         today = datetime.now().strftime("%Y-%m-%d")
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             mem_dir = tmp_path / "memories"
             mem_dir.mkdir()
             (mem_dir / f"{today}.md").write_text("\t\n \n", encoding="utf-8")
@@ -351,8 +351,8 @@ class TestDreamCycleStep2:
 
 class TestDreamCycleStep3:
 
-    def _setup_auric_tree(self, tmp_path: Path):
-        """Create the minimal .auric file tree for a full dream cycle."""
+    def _setup_kyberostree(self, tmp_path: Path):
+        """Create the minimal .kyberos file tree for a full dream cycle."""
         mem_dir = tmp_path / "memories"
         mem_dir.mkdir(exist_ok=True)
 
@@ -367,14 +367,14 @@ class TestDreamCycleStep3:
     @pytest.mark.asyncio
     async def test_daily_log_overwritten_with_cleaned_version(self, tmp_path):
         """Cleaned log should overwrite the daily log with a Dream Cycle Complete marker."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        today = self._setup_auric_tree(tmp_path)
+        today = self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway()
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         daily = (tmp_path / "memories" / f"{today}.md").read_text(encoding="utf-8")
@@ -384,14 +384,14 @@ class TestDreamCycleStep3:
     @pytest.mark.asyncio
     async def test_memory_updates_appended(self, tmp_path):
         """Memory updates should be appended to MEMORY.md as a staging section."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway()
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         memory = (tmp_path / "memories" / "MEMORY.md").read_text(encoding="utf-8")
@@ -402,14 +402,14 @@ class TestDreamCycleStep3:
     @pytest.mark.asyncio
     async def test_user_updates_appended(self, tmp_path):
         """User updates should be appended to USER.md as a staging section."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway()
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         user = (tmp_path / "USER.md").read_text(encoding="utf-8")
@@ -420,14 +420,14 @@ class TestDreamCycleStep3:
     @pytest.mark.asyncio
     async def test_heartbeat_updates_appended(self, tmp_path):
         """Heartbeat updates should be appended to HEARTBEAT.md."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway()
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         hb = (tmp_path / "HEARTBEAT.md").read_text(encoding="utf-8")
@@ -437,9 +437,9 @@ class TestDreamCycleStep3:
     @pytest.mark.asyncio
     async def test_no_updates_when_lists_empty(self, tmp_path):
         """Empty update lists should not modify any files beyond the daily log."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
 
         llm_data = {
@@ -451,7 +451,7 @@ class TestDreamCycleStep3:
         gateway = _make_gateway(llm_json=llm_data)
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         # MEMORY.md should be untouched
@@ -469,7 +469,7 @@ class TestDreamCycleStep3:
     @pytest.mark.asyncio
     async def test_missing_memory_file_handled(self, tmp_path):
         """Missing MEMORY.md should not crash — just log a warning."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
         mem_dir = tmp_path / "memories"
         mem_dir.mkdir()
@@ -483,16 +483,16 @@ class TestDreamCycleStep3:
         gateway = _make_gateway()
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             # Should not raise
             await perform_dream_cycle(audit, gateway, config)
 
     @pytest.mark.asyncio
     async def test_html_entities_unescaped(self, tmp_path):
         """HTML entities in LLM output should be unescaped before writing."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
 
         llm_data = {
@@ -504,7 +504,7 @@ class TestDreamCycleStep3:
         gateway = _make_gateway(llm_json=llm_data)
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         today = datetime.now().strftime("%Y-%m-%d")
@@ -518,9 +518,9 @@ class TestDreamCycleStep3:
     @pytest.mark.asyncio
     async def test_empty_cleaned_log_does_not_overwrite(self, tmp_path):
         """Empty cleaned_daily_log should NOT overwrite the daily log file."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         today = datetime.now().strftime("%Y-%m-%d")
         original = (tmp_path / "memories" / f"{today}.md").read_text(encoding="utf-8")
 
@@ -534,7 +534,7 @@ class TestDreamCycleStep3:
         gateway = _make_gateway(llm_json=llm_data)
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         # Original daily log should be untouched
@@ -544,15 +544,15 @@ class TestDreamCycleStep3:
     @pytest.mark.asyncio
     async def test_llm_error_caught(self, tmp_path):
         """LLM errors should be caught and logged, not raised."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
         gateway = AsyncMock()
         gateway.chat_completion = AsyncMock(side_effect=RuntimeError("LLM down"))
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             # Should not raise
             await perform_dream_cycle(audit, gateway, config)
 
@@ -563,8 +563,8 @@ class TestDreamCycleStep3:
 
 class TestDreamCycleStep4:
 
-    def _setup_auric_tree(self, tmp_path: Path):
-        """Create the minimal .auric file tree."""
+    def _setup_kyberostree(self, tmp_path: Path):
+        """Create the minimal .kyberos file tree."""
         mem_dir = tmp_path / "memories"
         mem_dir.mkdir(exist_ok=True)
 
@@ -579,14 +579,14 @@ class TestDreamCycleStep4:
     @pytest.mark.asyncio
     async def test_dream_story_written(self, tmp_path):
         """When enabled, a dream story should be written to DREAMS.md."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway(dream_text="I dreamt of infinite loops.")
         config = _make_config(enable_dream_stories=True)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         dreams_path = tmp_path / "memories" / "DREAMS.md"
@@ -599,9 +599,9 @@ class TestDreamCycleStep4:
     @pytest.mark.asyncio
     async def test_dream_story_creates_file(self, tmp_path):
         """DREAMS.md should be created with header if it doesn't exist."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         dreams_path = tmp_path / "memories" / "DREAMS.md"
         assert not dreams_path.exists()
 
@@ -609,7 +609,7 @@ class TestDreamCycleStep4:
         gateway = _make_gateway(dream_text="A dream!")
         config = _make_config(enable_dream_stories=True)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         assert dreams_path.exists()
@@ -619,9 +619,9 @@ class TestDreamCycleStep4:
     @pytest.mark.asyncio
     async def test_dream_story_appends(self, tmp_path):
         """Multiple dream cycles should append entries, not overwrite."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         dreams_path = tmp_path / "memories" / "DREAMS.md"
         dreams_path.write_text("# 💤 Dream Journal\n\n## 2026-02-18\nOld dream.\n\n---\n\n", encoding="utf-8")
 
@@ -629,7 +629,7 @@ class TestDreamCycleStep4:
         gateway = _make_gateway(dream_text="New dream!")
         config = _make_config(enable_dream_stories=True)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         content = dreams_path.read_text(encoding="utf-8")
@@ -639,9 +639,9 @@ class TestDreamCycleStep4:
     @pytest.mark.asyncio
     async def test_dream_story_disabled(self, tmp_path):
         """When disabled, no dream story LLM call should be made."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
 
         llm_data = {
@@ -653,7 +653,7 @@ class TestDreamCycleStep4:
         gateway = _make_gateway(llm_json=llm_data)
         config = _make_config(enable_dream_stories=False)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         # Only 1 call (smart_model for log processing), not 2
@@ -662,14 +662,14 @@ class TestDreamCycleStep4:
     @pytest.mark.asyncio
     async def test_dream_story_empty_response(self, tmp_path):
         """Empty dream story response should not create/modify DREAMS.md."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        self._setup_auric_tree(tmp_path)
+        self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
         gateway = _make_gateway(dream_text="   ")  # Whitespace only → strip() = ""
         config = _make_config(enable_dream_stories=True)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             await perform_dream_cycle(audit, gateway, config)
 
         dreams_path = tmp_path / "memories" / "DREAMS.md"
@@ -678,9 +678,9 @@ class TestDreamCycleStep4:
     @pytest.mark.asyncio
     async def test_dream_story_error_is_non_fatal(self, tmp_path):
         """Dream story LLM error should not crash the entire dream cycle."""
-        from auric.memory.chronicles import perform_dream_cycle
+        from kyberos.memory.timeline import perform_dream_cycle
 
-        today = self._setup_auric_tree(tmp_path)
+        today = self._setup_kyberostree(tmp_path)
         audit = _make_audit_logger(last_sid=None)
 
         call_count = 0
@@ -701,7 +701,7 @@ class TestDreamCycleStep4:
         gateway.chat_completion = AsyncMock(side_effect=_chat_side_effect)
         config = _make_config(enable_dream_stories=True)
 
-        with patch("auric.memory.chronicles.AURIC_ROOT", tmp_path):
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path):
             # Should not raise — dream error is caught separately
             await perform_dream_cycle(audit, gateway, config)
 

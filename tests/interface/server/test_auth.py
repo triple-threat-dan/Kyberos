@@ -4,8 +4,8 @@ from fastapi import HTTPException
 from starlette.status import HTTP_401_UNAUTHORIZED
 from fastapi.security import HTTPAuthorizationCredentials
 
-from auric.interface.server.auth import verify_token
-from auric.core.config import AuricConfig
+from kyberos.interface.server.auth import verify_token
+from kyberos.core.config import KyberosConfig
 
 @pytest.fixture
 def mock_request():
@@ -53,7 +53,7 @@ async def test_verify_token_invalid_initial_token_reloads_success(mock_request, 
     new_config.gateway = MagicMock()
     new_config.gateway.web_ui_token = "valid_token"
     
-    with patch("auric.core.config.ConfigLoader.load", return_value=new_config):
+    with patch("kyberos.core.config.ConfigLoader.load", return_value=new_config):
         # Execute
         result = await verify_token(credentials=mock_credentials, request=mock_request)
         
@@ -71,7 +71,7 @@ async def test_verify_token_invalid_initial_token_reloads_failure(mock_request, 
     new_config.gateway = MagicMock()
     new_config.gateway.web_ui_token = "still_wrong_token"
     
-    with patch("auric.core.config.ConfigLoader.load", return_value=new_config):
+    with patch("kyberos.core.config.ConfigLoader.load", return_value=new_config):
         # Execute & Assert
         with pytest.raises(HTTPException) as exc_info:
             await verify_token(credentials=mock_credentials, request=mock_request)
@@ -84,7 +84,7 @@ async def test_verify_token_invalid_initial_token_reload_exception(mock_request,
     # Setup: initial token mismatch
     mock_request.app.state.config.gateway.web_ui_token = "old_token"
     
-    with patch("auric.core.config.ConfigLoader.load", side_effect=Exception("Disk Error")):
+    with patch("kyberos.core.config.ConfigLoader.load", side_effect=Exception("Disk Error")):
         # Execute & Assert
         with pytest.raises(HTTPException) as exc_info:
             await verify_token(credentials=mock_credentials, request=mock_request)
@@ -101,7 +101,7 @@ async def test_verify_token_invalid_token_no_reload_on_mismatch_persists(mock_re
     new_config.gateway = MagicMock()
     new_config.gateway.web_ui_token = None # Reloaded config has no token
     
-    with patch("auric.core.config.ConfigLoader.load", return_value=new_config):
+    with patch("kyberos.core.config.ConfigLoader.load", return_value=new_config):
         # Execute & Assert
         with pytest.raises(HTTPException) as exc_info:
             await verify_token(credentials=mock_credentials, request=mock_request)

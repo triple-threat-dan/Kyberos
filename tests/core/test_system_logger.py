@@ -6,8 +6,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from auric.core.system_logger import SystemLogger, JSONLFormatter
-from auric.core.config import AuricConfig
+from kyberos.core.system_logger import SystemLogger, JSONLFormatter
+from kyberos.core.config import KyberosConfig
 
 
 @pytest.fixture(autouse=True)
@@ -19,16 +19,16 @@ def reset_singleton():
 
 @pytest.fixture
 def mock_config():
-    config = AuricConfig()
+    config = KyberosConfig()
     config.agents.defaults.logging.enabled = True
-    config.agents.defaults.logging.log_dir = ".auric/logs"
+    config.agents.defaults.logging.log_dir = ".kyberos/logs"
     config.agents.defaults.logging.max_size_mb = 10
     config.agents.defaults.logging.backup_count = 5
     return config
 
 
 def test_system_logger_singleton(mock_config):
-    with patch("auric.core.system_logger.Path.mkdir"):
+    with patch("kyberos.core.system_logger.Path.mkdir"):
         sl1 = SystemLogger.get_instance(mock_config)
         sl2 = SystemLogger.get_instance(mock_config)
         assert sl1 is sl2
@@ -54,11 +54,11 @@ def test_system_logger_initialization_enabled(mock_config, tmp_path):
 
 def test_system_logger_get_instance_no_config(tmp_path):
     # Test loading config automatically if none provided
-    mock_loaded_config = AuricConfig()
+    mock_loaded_config = KyberosConfig()
     mock_loaded_config.agents.defaults.logging.enabled = False
     
     # We patch the source of the late import
-    with patch("auric.core.config.load_config", return_value=mock_loaded_config):
+    with patch("kyberos.core.config.load_config", return_value=mock_loaded_config):
         sl = SystemLogger.get_instance()
         assert sl.config == mock_loaded_config
         assert sl._instance is not None
@@ -135,7 +135,7 @@ def test_system_logger_reinit_clears_handlers(mock_config, tmp_path):
 
 def test_system_logger_relative_path(mock_config, tmp_path):
     # Mock cwd to a temp path
-    with patch("auric.core.system_logger.Path.cwd", return_value=tmp_path):
+    with patch("kyberos.core.system_logger.Path.cwd", return_value=tmp_path):
         mock_config.agents.defaults.logging.log_dir = "rel_logs"
         # The code does log_dir = Path.cwd() / log_dir if not log_dir.is_absolute()
         sl = SystemLogger(mock_config)

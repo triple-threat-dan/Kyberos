@@ -1,207 +1,425 @@
+<div align="center">
 
+<img src="KYBEROS.png" alt="Kyberos" width="720">
 
-<p align="center">
-  <img src="ALISS_AURIC.png" alt="auric, the recursive agentic warlock">
-  <h1>OpenAuric: The Recursive Agentic Warlock</h1>
-  <p>
-    <a href="https://github.com/triple-threat-dan/OpenAuric/actions/workflows/tests.yaml"><img src="https://github.com/triple-threat-dan/OpenAuric/actions/workflows/tests.yaml/badge.svg" alt="Python Tests (uv)"></a>
-    <img src="https://img.shields.io/badge/python-≥3.11-blue" alt="Python">
-    <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  </p>
+# Kyberos
+
+### A local-first runtime for persistent, recursive AI agents.
+
+[![Python Tests](https://github.com/triple-threat-dan/Kyberos/actions/workflows/tests.yaml/badge.svg)](https://github.com/triple-threat-dan/Kyberos/actions/workflows/tests.yaml)
+![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 </div>
 
-> *Invoke the Pact. Automate the Realm.*.
+---
 
-**OpenAuric** is a lightweight, local, autonomous AI agent architecture designed for developers who need more than a chatbot. It is a **Recursive Language Model (RLM)** system that manages its own context, writes its own tools in *The Grimoire*, and persists memory through a structured file system.
+**Kyberos** is a lightweight, local-first AI agent runtime designed for building persistent autonomous agents that can reason recursively, retain long-term context, create and use their own skills, and interact across multiple external systems.
 
-Unlike standard agents that suffer from context drift, Auric anchors itself using a persistent "Focus" state and recursively spawns sub-agents to handle complex tasks without polluting the main context window. The Dream Cycle consolidates the agent's memory and ensures long-term stability and better context management.
+At its core, Kyberos implements a **Recursive Language Model (RLM)** architecture. Complex tasks can be delegated to isolated sub-agents, allowing the primary agent to preserve a clean context while still performing deep, multi-step work.
+
+Kyberos combines recursive reasoning with durable memory, structured working context, skill execution, session management, scheduled activity, and multi-channel communication.
+
+The result is an agent that behaves less like a stateless chatbot and more like a persistent software system.
 
 ---
 
-## 🔮 The Philosophy
+## Core Concepts
 
-OpenAuric is built on the metaphor of the **Warlock**:
+Kyberos organizes agent state and capabilities around a small set of explicit concepts.
 
-* **The User (You):** The user and administrator.
-* **The Agent (Auric):** The local Python daemon running on your machine.
-* **The Patron (LLM):** The raw intelligence provider (OpenAI, Anthropic, Gemini, or local Ollama), connected via LiteLLM, empowering the agent.
-* **The Grimoire (Skill Library):** A structured file system (`.auric/grimoire`) where the agent accesses its tools and scripts. Compatible with OpenClaw, gemini-cli, and claude code skills (any `SKILL.md` based system).
-* **The Memories:** A markdown-based memory system (`.auric/memories`) where the agent stores its Working Memory (`FOCUS.md`), Long-term Facts, and self-written notes (and a ChromaDB vector store for semantic search).
+### Thread
 
----
+The **Thread** represents the agent's active working context.
 
-## ✨ Key Features (v0.1)
+It tracks the current objective, plan, progress, and immediate state required to continue a task without relying entirely on conversational context.
 
-* **🧠 Recursive Language Model (RLM):** Auric can "spawn" sub-agents to solve specific problems (e.g., "Summarize this PDF") and return only the result to the main thread, saving tokens and maintaining coherence.
-* **📜 The Grimoire:** The collection of scripts Auric has written to solve problems - fully compatible with OpenClaw, gemini-cli, and claude code skills.
-* `grimoire/`: Python scripts (Spells) the agent wrote or possesses to solve problems.
-* **📚 The Memory:** A transparent, file-based memory system.
-* `memories/FOCUS.md`: The "Working Memory" representing the current task state & steps. Loaded on every turn, managed by the agent.
-* `memories/MEMORY.md`: Long-term semantic memory.
-
-
-* **🛡️ The Circle (Sandbox):** A safe Python execution environment where Auric can write and run code to query its own memory or perform tasks.
-* **👁️ Omni-Channel Pacts:** Connect Auric to Telegram, Discord, and GitHub.
-* **💤 The Dream Cycle:** An automated consolidation process that runs when the agent sleeps, summarizing the day's logs into permanent knowledge.
-* **🧠 The Patrons (LLM Providers):** Connect Auric to OpenAI, Anthropic, Gemini, or local Ollama via LiteLLM.
-* **❤️ Heartbeat:** A simple heartbeat system to allow Auric to perform recurring tasks or reminders.
-* **🖥️ Frontend UI:** A web UI to chat, check logs, and visualize the agent's thought process and memory state in real-time.
-
----
-
-## ⚡ Installation
-
-OpenAuric is designed for **Windows**, **Linux** and **WSL2** environments, but should run anywhere python 3.11+ is installed.
-
-### The Summoning (Quick Install)
-
-```bash
-# Clone the repository
-git clone https://github.com/triple-threat-dan/openauric.git
-cd openauric
-
-# Run the summoning script
-chmod +x install.sh
-./install.sh
-
+```text
+.kyberos/thread/
 ```
 
-This script will:
+### Archive
 
-1. Check for Python 3.11+.
-2. Create the `.auric` directory structure in the project root.
-3. Install dependencies in a dedicated virtual environment.
-4. Alias the `auric` command in your shell.
+The **Archive** is Kyberos' durable memory and knowledge system.
 
-## 🚀 Quick Start
+It stores long-term information that should survive individual conversations, sessions, and restarts.
 
-1. **Awaken the Daemon**: Start the agent in the background.
-   ```bash
-   auric start
-   ```
-2. **Set your API Key**: (e.g., for Gemini)
-   ```bash
-   auric config set keys.gemini YOUR_API_KEY
-   ```
-3. **Invoke the Warlock**: Send your first command directly from the terminal.
-   ```bash
-   auric -m "Who are you?"
-   ```
-4. **Open the Dashboard**: Access the web UI to visualize thoughts and memory.
-   ```bash
-   auric dashboard
-   ```
+Individual durable memories within the Archive are called **Engrams**.
+
+```text
+.kyberos/archive/
+```
+
+### Timeline
+
+The **Timeline** records historical events, activity, conversations, tool executions, and other relevant agent state over time.
+
+It provides the agent with historical context without requiring that history to remain permanently loaded into the model's context window.
+
+```text
+.kyberos/timeline/
+```
+
+### Skills
+
+**Skills** are reusable capabilities available to the agent.
+
+A Skill may contain instructions, scripts, tools, or supporting resources and follows the `SKILL.md` convention used by several modern agent ecosystems.
+
+```text
+.kyberos/skills/
+```
+
+Kyberos can use existing Skills or create new ones as it encounters new tasks.
+
+### Protocols
+
+**Protocols** connect Kyberos to external communication systems and services.
+
+Examples include:
+
+* Discord
+* Telegram
+* GitHub
+* HTTP/API integrations
+* Future agent-to-agent communication
+
+Protocols provide a consistent abstraction between the core runtime and external systems.
+
+### Codex
+
+The **Codex** contains structured knowledge, instructions, policies, and other reference material used by the agent.
+
+Unlike the Thread, which represents active work, the Codex represents relatively stable information the agent may consult when necessary.
+
+### Dream Cycles
+
+**Dream Cycles** consolidate short-term activity into durable knowledge.
+
+During a Dream Cycle, Kyberos can review recent Timeline events, identify meaningful information, produce Engrams, remove redundant context, and reorganize its Archive.
+
+This allows long-running agents to retain useful information without allowing their memory systems to grow without structure.
 
 ---
 
-## 🕹️ Usage
+## Features
 
-### Core Commands
+### Recursive Reasoning
 
-Manage the daemon and interact with the agent using the CLI:
+Kyberos can delegate complex work to isolated sub-agents.
 
-```bash
-# Start the background daemon
-auric start
+A sub-agent receives the context necessary for its task, performs the work independently, and returns a condensed result to the parent agent.
 
-# Send a message and wait for a response (Shortcut)
-auric -m "Hello Auric!"
+This allows deep recursive workflows without continuously expanding the primary context window.
 
-# Send a message using the explicit command
-auric message "What's on my schedule?"
+### Persistent Memory
 
-# Stop the daemon (triggers Dream Cycle)
-auric stop
+Kyberos maintains durable state outside the language model.
 
-# Restart the daemon
-auric restart
+Memory remains:
+
+* inspectable
+* editable
+* searchable
+* persistent across restarts
+* independent of any specific model provider
+
+Semantic retrieval is supported through a local vector store.
+
+### Skill System
+
+Kyberos supports reusable `SKILL.md`-based capabilities.
+
+Skills can include:
+
+* instructions
+* Python scripts
+* shell scripts
+* supporting files
+* structured parameters
+
+### Sandboxed Execution
+
+Kyberos provides controlled execution environments for agent-generated code and tools.
+
+Platform-specific command tools are exposed appropriately:
+
+```text
+Windows      → PowerShell
+Linux/macOS  → Bash
 ```
 
-### Configuration
+### Multi-Provider LLM Support
 
-Configure your Patron (LLM Provider) and API keys:
+Kyberos uses LiteLLM to support multiple model providers behind a common interface.
 
-```bash
-# Opens .auric/auric.json in your default editor
-auric config
+Providers can include:
 
+* OpenAI
+* Anthropic
+* Google Gemini
+* OpenRouter
+* local models
+* Ollama
+
+### Protocol Adapters
+
+Kyberos can operate across external communication channels while maintaining centralized agent state and session routing.
+
+### Heartbeat
+
+The Heartbeat system allows the agent to periodically evaluate scheduled or recurring tasks without requiring an active user conversation.
+
+### Session Management
+
+Kyberos maintains independent conversational sessions while allowing appropriate shared state to persist through the Archive and Timeline.
+
+### System Logging
+
+Agent activity can be recorded for observability and debugging, including:
+
+* LLM requests
+* agent responses
+* tool calls
+* protocol events
+* session activity
+* runtime events
+
+---
+
+## Architecture
+
+```text
+                     ┌────────────────────┐
+                     │       User         │
+                     └─────────┬──────────┘
+                               │
+                         Protocols
+                               │
+                     ┌─────────▼──────────┐
+                     │      Kyberos       │
+                     │      Runtime       │
+                     └─────────┬──────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+              ▼                ▼                ▼
+           Thread           Archive          Timeline
+                                │
+                              Engrams
+              │
+              ▼
+        Recursive Agent
+              │
+       ┌──────┴───────┐
+       │              │
+       ▼              ▼
+    Skills        Sub-Agents
+       │
+       ▼
+    Sandbox
 ```
 
-Example `auric.json` snippet:
+---
+
+## Installation
+
+Kyberos requires **Python 3.12+** and is designed to run on:
+
+* Windows
+* Linux
+* WSL2
+* macOS
+
+Clone the repository:
+
+```bash
+git clone https://github.com/triple-threat-dan/Kyberos.git
+cd Kyberos
+```
+
+Install dependencies with `uv`:
+
+```bash
+uv sync --all-extras --dev
+```
+
+Run the test suite:
+
+```bash
+uv run pytest
+```
+
+---
+
+## Quick Start
+
+Start the Kyberos runtime:
+
+```bash
+kyberos start
+```
+
+Check its status:
+
+```bash
+kyberos status
+```
+
+Send a message:
+
+```bash
+kyberos message "Hello."
+```
+
+Restart the runtime:
+
+```bash
+kyberos restart
+```
+
+Stop Kyberos:
+
+```bash
+kyberos stop
+```
+
+---
+
+## Configuration
+
+Kyberos stores local runtime state under:
+
+```text
+.kyberos/
+```
+
+Configuration is stored in:
+
+```text
+.kyberos/kyberos.json
+```
+
+Example:
 
 ```json
 {
-  "patron": {
-    "provider": "openai",
-    "model": "gpt-4o",
-    "api_key": "sk-..."
+  "provider": {
+    "name": "openai",
+    "model": "gpt-5"
   },
   "safety": {
-    "human_confirmation_required": ["rm", "dd", "sudo"]
+    "human_confirmation_required": [
+      "destructive_file_operations",
+      "privileged_commands"
+    ]
   }
 }
+```
 
+Configuration can be opened from the CLI:
+
+```bash
+kyberos config
 ```
 
 ---
 
-## 📖 The Grimoire (Spell/Skill System)
+## Runtime State
 
-Auric's abilities rely on **The Grimoire**, the collection of Spells located at `.auric/grimoire/`
+A Kyberos installation may contain structures similar to:
 
-### `grimoire/` (Skills)
-
-Folder containing SKILL.md files and Python scripts Auric has written.
-
-* *Example:* `grimoire/docker_fix.py`
-
-## 📚 The Memory (Long-term Memory System)
-
-Auric's short- and long-term memory is stored in the **Memories** at `.auric/memories/`. You are encouraged to read and edit these files manually—Auric will see your changes instantly.
-
-### `FOCUS.md` (The Scratchpad)
-
-The most important file. It tracks the **Current Task**. If Auric gets stuck, open this file and edit the checklist manually to guide it.
-
-```markdown
-# 🎯 Prime Directive
-User asked: "Scrape stock prices."
-
-# 📋 Plan
-- [x] Write scraper script
-- [ ] Run script <-- CURRENT STATE
-- [ ] Save to CSV
-
+```text
+.kyberos/
+├── archive/
+│   └── engrams/
+├── thread/
+├── timeline/
+├── skills/
+├── codex/
+├── chroma_db/
+├── logs/
+└── kyberos.json
 ```
 
-### `memories/` (Context)
-
-Long-term semantic memory (`MEMORY.md`) and current focus (`FOCUS.md`).
-
-* *Example:* `.auric/memories/MEMORY.md`
-
-
-### ChromaDB
-
-Auric uses ChromaDB to store its long-term memory and perform hybrid search. The database is located at `.auric/chroma_db`
+The exact storage layout may evolve as Kyberos v2 develops, while the conceptual boundaries between these systems remain stable.
 
 ---
 
-## 🤝 Contributing
+## Development
 
-We are currently in **Phase v0.1 (The First Invocation)**.
-See `CONTRIBUTING.md` for details on how to set up the dev environment and run tests.
+Install development dependencies:
 
-### Roadmap
+```bash
+uv sync --all-extras --dev
+```
 
-* [ ] More Spells (Skills)
-* [ ] More Pacts (Channels)
-* [ ] Voice Interface via Whisper/TTS.
-* [ ] Support for Knowledge graphs
-* [ ] And much more!
+Run tests:
+
+```bash
+uv run pytest
+```
+
+Run tests with coverage:
+
+```bash
+uv run pytest --cov=kyberos tests/
+```
+
+Build the package:
+
+```bash
+uv build
+```
 
 ---
 
-## 📜 License
+## Project Status
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Kyberos is currently undergoing its **v2 architecture and identity transition** from the original OpenAuric project. I forked it from that project because, while the warlock theme was novel, it didn't feel like it fit anymore.
+
+The v2 effort focuses on:
+
+* a cleaner runtime architecture
+* stronger separation between agent subsystems
+* improved memory lifecycle management
+* better session isolation
+* standardized Skills
+* extensible Protocols
+* improved observability
+* safer tool execution
+* stronger human-in-the-loop controls
+* efficient recursive agent orchestration
+
+OpenAuric's Git history has been preserved as the foundation of Kyberos.
+
+---
+
+## Roadmap
+
+* [ ] Complete OpenAuric → Kyberos v2 migration
+* [ ] Implement Timeline-backed historical context
+* [ ] Standardize the Skills subsystem
+* [ ] Standardize external integrations as Protocols
+* [ ] Improve session lifecycle management
+* [ ] Expand Dream Cycle memory consolidation
+* [ ] Add agent-to-agent communication
+* [ ] Improve local-model and Ollama support
+* [ ] Expand human-in-the-loop safety controls
+* [ ] Add voice and embodied-agent interfaces
+
+---
+
+## Contributing
+
+Contributions are welcome.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, testing requirements, and contribution guidelines.
+
+---
+
+## License
+
+Kyberos is distributed under the **MIT License**.
+
+See [`LICENSE`](LICENSE) for details.

@@ -3,9 +3,9 @@ import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from auric.interface.server.routes import router
-from auric.interface.server.auth import verify_token
-from auric.memory.focus_manager import FocusManager
+from kyberos.interface.server.routes import router
+from kyberos.interface.server.auth import verify_token
+from kyberos.memory.thread_manager import ThreadManager
 from uuid import uuid4
 import json
 
@@ -24,7 +24,7 @@ def app():
     app.state.audit_logger = AsyncMock()
     app.state.session_router = MagicMock()
     app.state.command_bus = AsyncMock()
-    app.state.focus_manager = MagicMock()
+    app.state.thread_manager = MagicMock()
     app.state.gateway = MagicMock()
     
     return app
@@ -35,10 +35,10 @@ def client(app):
 
 @pytest.mark.asyncio
 async def test_get_status(client, app):
-    # Mock FocusManager.load to return a valid focus model
-    mock_focus = MagicMock()
-    mock_focus.state.value = "ACTIVE"
-    mock_focus.model_dump.return_value = {"goal": "test goal"}
+    # Mock ThreadManager.load to return a valid thread model
+    mock_thread = MagicMock()
+    mock_thread.state.value = "ACTIVE"
+    mock_thread.model_dump.return_value = {"goal": "test goal"}
     
     # Mock database history
     mock_msg = MagicMock()
@@ -46,14 +46,14 @@ async def test_get_status(client, app):
     mock_msg.content = "hello"
     app.state.audit_logger.get_chat_history.return_value = [mock_msg]
     
-    app.state.focus_manager.load.return_value = mock_focus
+    app.state.thread_manager.load.return_value = mock_thread
     
     response = client.get("/api/status")
         
     assert response.status_code == 200
     data = response.json()
-    assert data["focus_state"]["goal"] == "test goal"
-    assert data["focus_state"]["state"] == "ACTIVE"
+    assert data["thread_state"]["goal"] == "test goal"
+    assert data["thread_state"]["state"] == "ACTIVE"
     assert data["logs"] == ["Log line 1"]
     assert data["chat_history"][0]["message"] == "hello"
     assert data["stats"]["status"] == "ONLINE"
@@ -86,7 +86,7 @@ async def test_get_sessions(client, app):
 async def test_get_session_chat(client, app):
     mock_msg = MagicMock()
     mock_msg.role = "assistant"
-    mock_msg.content = "I am Auric"
+    mock_msg.content = "I am Kyberos"
     mock_msg.timestamp = None
     app.state.audit_logger.get_chat_history.return_value = [mock_msg]
     
@@ -94,7 +94,7 @@ async def test_get_session_chat(client, app):
     
     assert response.status_code == 200
     data = response.json()
-    assert data[0]["message"] == "I am Auric"
+    assert data[0]["message"] == "I am Kyberos"
     assert data[0]["level"] == "assistant"
 
 @pytest.mark.asyncio
@@ -170,8 +170,8 @@ async def test_get_system_logs(client):
     mock_log_content = json.dumps({"timestamp": "2026-03-03", "message": "test log"}) + "\n"
     
     # Patch load_config in the core config module since load_config is imported in routes.py
-    with patch("auric.core.config.load_config", return_value=mock_config), \
-         patch("auric.interface.server.routes.Path.exists", return_value=True):
+    with patch("kyberos.core.config.load_config", return_value=mock_config), \
+         patch("kyberos.interface.server.routes.Path.exists", return_value=True):
         
         with patch("builtins.open", MagicMock(return_value=MagicMock(__enter__=lambda s: [mock_log_content]))):
             response = client.get("/api/system_logs?limit=10")
@@ -200,7 +200,7 @@ async def test_get_llm_logs(client, app):
 @pytest.mark.asyncio
 async def test_trigger_heartbeat(client, app):
     # Patch in the original module
-    with patch("auric.core.heartbeat.run_heartbeat_task", new_callable=AsyncMock) as mock_heartbeat:
+    with patch("kyberos.core.heartbeat.run_heartbeat_task", new_callable=AsyncMock) as mock_heartbeat:
         response = client.post("/api/heartbeat")
         
     assert response.status_code == 200
