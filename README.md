@@ -80,11 +80,19 @@ Examples include:
 
 * Discord
 * Telegram
+* Slack (Socket Mode)
 * GitHub
 * HTTP/API integrations
 * Future agent-to-agent communication
 
 Protocols provide a consistent abstraction between the core runtime and external systems.
+
+Slack uses a Slack app with Socket Mode enabled. Configure `protocols.slack` in
+`.kyberos/kyberos.json` with `enabled`, `bot_token` (`xoxb-...`), and `app_token`
+(`xapp-...`, with the `connections:write` scope). Subscribe the bot to `message.im`
+and `message.channels` events and grant the scopes needed to read those conversations
+and post messages. `allowed_users` and `allowed_channels` can restrict who and where
+the bot responds; direct messages remain available when a channel allowlist is set.
 
 ### Codex
 

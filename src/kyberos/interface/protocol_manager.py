@@ -7,6 +7,7 @@ from kyberos.core.database import AuditLogger
 from kyberos.interface.adapters.base import BaseProtocol, ProtocolEvent
 from kyberos.interface.adapters.discord import DiscordProtocol
 from kyberos.interface.adapters.telegram import TelegramProtocol
+from kyberos.interface.adapters.slack import SlackProtocol
 
 logger = logging.getLogger("kyberos.protocol.manager")
 
@@ -61,6 +62,20 @@ class ProtocolManager:
             discord.on_message(self.handle_message)
             self.adapters["discord"] = discord
             await discord.start()
+
+        # Slack
+        if (self.config.protocols.slack.enabled and self.config.protocols.slack.bot_token
+                and self.config.protocols.slack.app_token):
+            slack = SlackProtocol(
+                bot_token=self.config.protocols.slack.bot_token,
+                app_token=self.config.protocols.slack.app_token,
+                allowed_channels=self.config.protocols.slack.allowed_channels,
+                allowed_users=self.config.protocols.slack.allowed_users,
+                agent_name=self.config.agents.name,
+            )
+            slack.on_message(self.handle_message)
+            self.adapters["slack"] = slack
+            await slack.start()
 
         if not self.adapters:
             logger.warning("No Protocols enabled. Agent is lonely.")
@@ -164,7 +179,7 @@ class ProtocolManager:
         result = await adapter.execute_tool(tool_name, args)
         
         # Intercept outbound messaging to sync session history
-        if tool_name in ("discord_send_dm", "discord_send_channel_message"):
+        if tool_name in ("discord_send_dm", "discord_send_channel_message", "slack_send_message"):
             target_id = args.get("user_id") or args.get("channel_id")
             content = args.get("content")
             
