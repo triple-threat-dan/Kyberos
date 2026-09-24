@@ -26,6 +26,11 @@ def mock_config():
     config.keys.gemini = "sk-gemini-key"
     config.keys.anthropic = "sk-anthropic-key"
     config.keys.openrouter = "sk-openrouter-key"
+    config.keys.bedrock = None
+    config.keys.bedrock_access_key_id = None
+    config.keys.bedrock_secret_access_key = None
+    config.keys.bedrock_session_token = None
+    config.keys.bedrock_region = None
     
     return config
 
@@ -135,6 +140,84 @@ class TestLLMGatewayChat:
             # It should fallback to heuristic check for "openai" key
             args, kwargs = mock_complete.call_args
             assert kwargs["api_key"] == "sk-openai-key"
+
+    @pytest.mark.asyncio
+    async def test_bedrock_api_key_is_forwarded(self, mock_config):
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+            gateway = LLMGateway(mock_config)
+            mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="Hi"))])
+            mock_config.keys.bedrock = "bedrock-api-key"
+            mock_config.agents.models["bedrock_model"] = Mock(
+                spec=ModelConfig,
+                provider="bedrock",
+                model="bedrock/amazon.nova-pro-v1:0",
+                enabled=True,
+            )
+
+            await gateway.chat_completion(messages=[], tier="bedrock_model")
+
+            kwargs = mock_complete.call_args.kwargs
+            assert kwargs["api_key"] == "bedrock-api-key"
+            assert kwargs["model"] == "bedrock/amazon.nova-pro-v1:0"
+            assert not any(name.startswith("aws_") for name in kwargs)
+
+    @pytest.mark.asyncio
+    async def test_bedrock_aws_credentials_are_forwarded(self, mock_config):
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+            gateway = LLMGateway(mock_config)
+            mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="Hi"))])
+            mock_config.keys.bedrock = None
+            mock_config.keys.bedrock_access_key_id = "aws-access-key"
+            mock_config.keys.bedrock_secret_access_key = "aws-secret-key"
+            mock_config.keys.bedrock_session_token = "aws-session-token"
+            mock_config.keys.bedrock_region = "us-west-2"
+            mock_config.agents.models["bedrock_model"] = Mock(
+                spec=ModelConfig,
+                provider="bedrock",
+                model="bedrock/amazon.nova-pro-v1:0",
+                enabled=True,
+            )
+
+            await gateway.chat_completion(messages=[], tier="bedrock_model")
+
+            kwargs = mock_complete.call_args.kwargs
+            assert kwargs["api_key"] is None
+            assert kwargs["aws_access_key_id"] == "aws-access-key"
+            assert kwargs["aws_secret_access_key"] == "aws-secret-key"
+            assert kwargs["aws_session_token"] == "aws-session-token"
+            assert kwargs["aws_region_name"] == "us-west-2"
+
+    @pytest.mark.asyncio
+    async def test_bedrock_without_configured_credentials_uses_default_chain(self, mock_config):
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+            gateway = LLMGateway(mock_config)
+            mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="Hi"))])
+            mock_config.agents.models["bedrock_model"] = Mock(
+                spec=ModelConfig,
+                provider="bedrock",
+                model="bedrock/amazon.nova-pro-v1:0",
+                enabled=True,
+            )
+
+            await gateway.chat_completion(messages=[], tier="bedrock_model")
+
+            kwargs = mock_complete.call_args.kwargs
+            assert kwargs["api_key"] is None
+            assert not any(name.startswith("aws_") for name in kwargs)
+
+    @pytest.mark.asyncio
+    async def test_bedrock_credentials_are_not_sent_to_other_providers(self, mock_config):
+        with patch("kyberos.brain.llm_gateway.litellm.acompletion", new_callable=AsyncMock) as mock_complete:
+            gateway = LLMGateway(mock_config)
+            mock_complete.return_value = Mock(choices=[Mock(message=Mock(content="Hi"))])
+            mock_config.keys.bedrock_access_key_id = "aws-access-key"
+            mock_config.keys.bedrock_secret_access_key = "aws-secret-key"
+
+            await gateway.chat_completion(messages=[], tier="smart_model")
+
+            kwargs = mock_complete.call_args.kwargs
+            assert kwargs["model"] == "gpt-4"
+            assert not any(name.startswith("aws_") for name in kwargs)
 
     @pytest.mark.asyncio
     async def test_malformed_response_recovery(self, mock_config):

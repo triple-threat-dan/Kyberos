@@ -11,6 +11,7 @@ def mock_config():
     config = KyberosConfig()
     config.protocols.discord.enabled = False
     config.protocols.telegram.enabled = False
+    config.protocols.slack.enabled = False
     return config
 
 
@@ -94,6 +95,39 @@ async def test_start_discord_enabled(mock_discord_class, mock_config, mock_audit
     mock_discord_instance.on_message.assert_called_once_with(manager.handle_message)
     mock_discord_instance.start.assert_called_once()
     assert manager.get_tool_names() == {"dc_tool"}
+
+
+@pytest.mark.asyncio
+@patch("kyberos.interface.protocol_manager.SlackProtocol")
+async def test_start_slack_enabled(mock_slack_class, mock_config, mock_audit):
+    mock_config.protocols.slack.enabled = True
+    mock_config.protocols.slack.bot_token = "xoxb-test"
+    mock_config.protocols.slack.app_token = "xapp-test"
+    mock_config.protocols.slack.allowed_channels = ["C123"]
+    mock_config.protocols.slack.allowed_users = ["U123"]
+    mock_config.agents.name = "TestAgent"
+
+    manager = ProtocolManager(mock_config, mock_audit, AsyncMock(), AsyncMock())
+    mock_slack = MagicMock()
+    mock_slack.start = AsyncMock()
+    mock_slack.get_tool_names.return_value = ["slack_send_message"]
+    mock_slack.get_tools_schema.return_value = [{"name": "slack_send_message"}]
+    mock_slack.get_tools_definition.return_value = "slack tools"
+    mock_slack_class.return_value = mock_slack
+
+    await manager.start()
+
+    assert manager.adapters["slack"] is mock_slack
+    mock_slack_class.assert_called_once_with(
+        bot_token="xoxb-test",
+        app_token="xapp-test",
+        allowed_channels=["C123"],
+        allowed_users=["U123"],
+        agent_name="TestAgent",
+    )
+    mock_slack.on_message.assert_called_once_with(manager.handle_message)
+    mock_slack.start.assert_awaited_once()
+    assert manager.get_tool_names() == {"slack_send_message"}
 
 
 @pytest.mark.asyncio

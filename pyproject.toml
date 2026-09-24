@@ -22,6 +22,8 @@ dependencies = [
     "python-telegram-bot",
     "python-telegram-bot",
     "discord.py",
+    "slack-sdk",
+    "aiohttp",
     "psutil",
     "aiofiles",
     "sentence-transformers",
@@ -29,6 +31,9 @@ dependencies = [
 
 [project.scripts]
 kyberos = "kyberos.cli:app"
+
+[project.optional-dependencies]
+bedrock = ["boto3>=1.28.57"]
 
 [build-system]
 requires = ["hatchling"]

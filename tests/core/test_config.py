@@ -224,6 +224,34 @@ def test_secrets_manager_get_secret_not_string():
     # The value is a dictionary, not string/int/float/bool
     assert sm.get_secret("tools.custom_tool.complex") is None
 
+
+def test_bedrock_settings_load_from_json_shape():
+    test_config = KyberosConfig(**{
+        "agents": {
+            "models": {
+                "smart_model": {
+                    "provider": "bedrock",
+                    "model": "bedrock/amazon.nova-pro-v1:0",
+                }
+            }
+        },
+        "keys": {
+            "bedrock": "bedrock-api-key",
+            "bedrock_access_key_id": "aws-access-key",
+            "bedrock_secret_access_key": "aws-secret-key",
+            "bedrock_session_token": "aws-session-token",
+            "bedrock_region": "us-west-2",
+        },
+    })
+
+    assert test_config.agents.models["smart_model"].provider == "bedrock"
+    assert test_config.agents.models["smart_model"].model == "bedrock/amazon.nova-pro-v1:0"
+    assert test_config.keys.bedrock == "bedrock-api-key"
+    assert test_config.keys.bedrock_access_key_id == "aws-access-key"
+    assert test_config.keys.bedrock_secret_access_key == "aws-secret-key"
+    assert test_config.keys.bedrock_session_token == "aws-session-token"
+    assert test_config.keys.bedrock_region == "us-west-2"
+
 # ==============================================================================
 # Tests for Global Accessors
 # ==============================================================================

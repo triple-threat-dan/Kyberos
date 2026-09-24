@@ -703,12 +703,23 @@
                     <div id="keys" class="settings-section">
                         <h2>API Keys</h2>
                         <span class="description" style="display:block; margin-bottom: 20px;">Provide tokens for active providers to allow the agent access to external models or tools.</span>
-                        ${Object.keys(config.keys).map(keyName => `
-                            <div class="form-group">
-                                <label>${keyName.charAt(0).toUpperCase() + keyName.slice(1)} Key</label>
-                                <input type="password" class="form-control" data-path="keys.${keyName}" value="${config.keys[keyName] || ''}" placeholder="Not set">
-                            </div>
-                        `).join('')}
+                        ${Object.keys(config.keys).map(keyName => {
+                            const labels = {
+                                bedrock: 'Bedrock API Key',
+                                bedrock_access_key_id: 'Bedrock AWS Access Key ID',
+                                bedrock_secret_access_key: 'Bedrock AWS Secret Access Key',
+                                bedrock_session_token: 'Bedrock AWS Session Token',
+                                bedrock_region: 'Bedrock AWS Region'
+                            };
+                            const label = labels[keyName] || `${keyName.charAt(0).toUpperCase() + keyName.slice(1)} Key`;
+                            const inputType = keyName === 'bedrock_region' ? 'text' : 'password';
+                            return `
+                                <div class="form-group">
+                                    <label>${label}</label>
+                                    <input type="${inputType}" class="form-control" data-path="keys.${keyName}" value="${config.keys[keyName] || ''}" placeholder="Not set">
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                 `
             };

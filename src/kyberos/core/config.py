@@ -104,10 +104,18 @@ class DiscordConfig(BaseModel):
     allowed_users: List[str] = Field(default_factory=list)
     bot_loop_limit: int = 4
 
+class SlackConfig(BaseModel):
+    enabled: bool = False
+    bot_token: Optional[str] = None
+    app_token: Optional[str] = None
+    allowed_channels: List[str] = Field(default_factory=list)
+    allowed_users: List[str] = Field(default_factory=list)
+
 class ProtocolsConfig(BaseModel):
     """Configuration for platform adapters."""
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     discord: DiscordConfig = Field(default_factory=DiscordConfig)
+    slack: SlackConfig = Field(default_factory=SlackConfig)
 
 class LLMKeys(BaseModel):
     """API keys for LLM providers."""
@@ -115,6 +123,11 @@ class LLMKeys(BaseModel):
     anthropic: Optional[str] = None
     gemini: Optional[str] = None
     openrouter: Optional[str] = None
+    bedrock: Optional[str] = None
+    bedrock_access_key_id: Optional[str] = None
+    bedrock_secret_access_key: Optional[str] = None
+    bedrock_session_token: Optional[str] = None
+    bedrock_region: Optional[str] = None
     brave: Optional[str] = None
 
 class EmbeddingsConfig(BaseModel):
