@@ -1,12 +1,12 @@
 import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
 import pytest
-from auric.core import daemon
-from auric.core.config import AuricConfig
+from kyberos.core import daemon
+from kyberos.core.config import KyberosConfig
 
 @pytest.fixture
 def mock_config():
-    config = AuricConfig()
+    config = KyberosConfig()
     config.gateway.web_ui_token = "mock_shutdown_token"
     config.agents.models = {
         "heartbeat_model": MagicMock(model="hb-model"),
@@ -20,7 +20,7 @@ async def test_shutdown_daemon_summarizes_sessions(mock_config):
     mock_audit_logger = AsyncMock()
     mock_session_router = MagicMock()
     mock_gateway = MagicMock()
-    mock_pact_manager = AsyncMock()
+    mock_protocol_manager = AsyncMock()
     mock_scheduler = MagicMock()
     
     # Setup active sessions
@@ -36,7 +36,7 @@ async def test_shutdown_daemon_summarizes_sessions(mock_config):
         session_router=mock_session_router,
         gateway=mock_gateway,
         config=mock_config,
-        pact_manager=mock_pact_manager,
+        protocol_manager=mock_protocol_manager,
         scheduler=mock_scheduler,
         tasks_to_cancel=tasks
     )
@@ -52,7 +52,7 @@ async def test_shutdown_daemon_summarizes_sessions(mock_config):
     mock_session_router.close_session.assert_any_call("telegram:2")
     
     # Verify subsystems stopped
-    mock_pact_manager.stop.assert_awaited_once()
+    mock_protocol_manager.stop.assert_awaited_once()
     mock_scheduler.shutdown.assert_called_once()
     mock_audit_logger.close.assert_awaited_once()
     
@@ -67,25 +67,25 @@ async def test_run_daemon_calls_shutdown_on_finish(mock_config):
     app = FastAPI()
     app.state = MagicMock()
     
-    with patch("auric.core.daemon.load_config", return_value=mock_config), \
-         patch("auric.core.daemon.AuditLogger") as MockAuditLogger, \
-         patch("auric.core.daemon.SessionRouter") as MockSessionRouter, \
-         patch("auric.interface.pact_manager.PactManager") as MockPactManager, \
-         patch("auric.core.daemon.AsyncIOScheduler") as MockScheduler, \
-         patch("auric.core.daemon.shutdown_daemon", new_callable=AsyncMock) as mock_shutdown, \
-         patch("auric.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError), \
-         patch("auric.core.daemon.ensure_workspace"), \
-         patch("auric.core.daemon.Path.exists", return_value=True):
+    with patch("kyberos.core.daemon.load_config", return_value=mock_config), \
+         patch("kyberos.core.daemon.AuditLogger") as MockAuditLogger, \
+         patch("kyberos.core.daemon.SessionRouter") as MockSessionRouter, \
+         patch("kyberos.interface.protocol_manager.ProtocolManager") as MockProtocolManager, \
+         patch("kyberos.core.daemon.AsyncIOScheduler") as MockScheduler, \
+         patch("kyberos.core.daemon.shutdown_daemon", new_callable=AsyncMock) as mock_shutdown, \
+         patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=asyncio.CancelledError), \
+         patch("kyberos.core.daemon.ensure_workspace"), \
+         patch("kyberos.core.daemon.Path.exists", return_value=True):
         
         # Ensure minimal setup to reach the try/finally
         audit_logger = MockAuditLogger.return_value
         audit_logger.init_db = AsyncMock()
         audit_logger.get_last_active_session_id = AsyncMock(return_value="last_sid")
         
-        MockPactManager.return_value.start = AsyncMock()
+        MockProtocolManager.return_value.start = AsyncMock()
         
         # RLMEngine also calls load_config via SystemLogger.get_instance()
-        with patch("auric.core.config.load_config", return_value=mock_config):
+        with patch("kyberos.core.config.load_config", return_value=mock_config):
             await daemon.run_daemon(None, app)
         
         # Verify shutdown helper was called

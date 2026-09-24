@@ -1,7 +1,7 @@
 services:
-  openauric:
+  kyberos:
     build: .
-    container_name: auric_linux_bot
+    container_name: kyberoslinux_bot
     restart: unless-stopped
     volumes:
       - .:/app

@@ -2,29 +2,29 @@ $ErrorActionPreference = "Stop"
 
 # --- Configuration ---
 $RepoRoot = Resolve-Path "$PSScriptRoot\.."
-$PidFile = "$RepoRoot\.auric\auric.pid"
+$PidFile = "$RepoRoot\.kyberos\kyberos.pid"
 $WasRunning = $false
 
-Write-Host ">>> Initiating OpenAuric Update Sequence..." -ForegroundColor Magenta
+Write-Host ">>> Initiating Kyberos Update Sequence..." -ForegroundColor Magenta
 
-# --- 1. Check if Auric is Running ---
+# --- 1. Check if Kyberos is Running ---
 
 if (Test-Path $PidFile) {
     $PidContent = Get-Content $PidFile -Raw
     if ($PidContent -match '^\d+$') {
-        $AUricPid = [int]$PidContent
-        $Process = Get-Process -Id $AUricPid -ErrorAction SilentlyContinue
+        $KyberosPid = [int]$PidContent
+        $Process = Get-Process -Id $KyberosPid -ErrorAction SilentlyContinue
         if ($Process) {
-            Write-Host "[INFO] Auric is currently running (PID: $AUricPid)." -ForegroundColor Cyan
+            Write-Host "[INFO] Kyberos is currently running (PID: $KyberosPid)." -ForegroundColor Cyan
             $WasRunning = $true
             
-            Write-Host ">>> Stopping Auric..." -ForegroundColor Cyan
+            Write-Host ">>> Stopping Kyberos..." -ForegroundColor Cyan
             try {
-                Stop-Process -Id $AUricPid -Force -ErrorAction Stop
-                Write-Host "[OK] Auric stopped." -ForegroundColor Green
+                Stop-Process -Id $KyberosPid -Force -ErrorAction Stop
+                Write-Host "[OK] Kyberos stopped." -ForegroundColor Green
             }
             catch {
-                Write-Warning "Failed to stop Auric gracefully: $_"
+                Write-Warning "Failed to stop Kyberos gracefully: $_"
             }
             
             # Give it a moment to fully shutdown
@@ -65,12 +65,12 @@ catch {
 
 # --- 3. Reinstall Package ---
 
-Write-Host ">>> Reinstalling OpenAuric package..." -ForegroundColor Cyan
+Write-Host ">>> Reinstalling Kyberos package..." -ForegroundColor Cyan
 
 if (Test-Path "$RepoRoot\pyproject.toml") {
     try {
         uv tool install "$RepoRoot" --force
-        Write-Host "[OK] OpenAuric reinstalled successfully." -ForegroundColor Green
+        Write-Host "[OK] Kyberos reinstalled successfully." -ForegroundColor Green
     }
     catch {
         Write-Error "[ERROR] Failed to reinstall package: $_"
@@ -84,29 +84,29 @@ else {
 # --- 4. Restart if it was running ---
 
 if ($WasRunning) {
-    Write-Host ">>> Restarting Auric..." -ForegroundColor Cyan
+    Write-Host ">>> Restarting Kyberos..." -ForegroundColor Cyan
     try {
-        $AuricPath = (Get-Command auric -ErrorAction SilentlyContinue).Source
-        if (-not $AuricPath) {
-            $AuricPath = "$env:USERPROFILE\.local\bin\auric.exe"
+        $KyberosPath = (Get-Command kyberos -ErrorAction SilentlyContinue).Source
+        if (-not $KyberosPath) {
+            $KyberosPath = "$env:USERPROFILE\.local\bin\kyberos.exe"
         }
         
-        if (Test-Path $AuricPath) {
-            # Start auric in a new process so it doesn't block this script
-            Start-Process -FilePath $AuricPath -ArgumentList "start" -WindowStyle Hidden
-            Write-Host "[OK] Auric restarted." -ForegroundColor Green
+        if (Test-Path $KyberosPath) {
+            # Start kyberos in a new process so it doesn't block this script
+            Start-Process -FilePath $KyberosPath -ArgumentList "start" -WindowStyle Hidden
+            Write-Host "[OK] Kyberos restarted." -ForegroundColor Green
         }
         else {
-            Write-Warning "Could not find auric executable. Please start manually with: auric start"
+            Write-Warning "Could not find kyberos executable. Please start manually with: kyberos start"
         }
     }
     catch {
-        Write-Warning "Failed to restart Auric: $_. Please start manually with: auric start"
+        Write-Warning "Failed to restart Kyberos: $_. Please start manually with: kyberos start"
     }
 }
 
-Write-Host ">>> OpenAuric update complete." -ForegroundColor Magenta
+Write-Host ">>> Kyberos update complete." -ForegroundColor Magenta
 
 if (-not $WasRunning) {
-    Write-Host "    Run 'auric start' to begin." -ForegroundColor Cyan
+    Write-Host "    Run 'kyberos start' to begin." -ForegroundColor Cyan
 }

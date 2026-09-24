@@ -3,8 +3,8 @@ import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from auric.interface.server.routes import router
-from auric.interface.server.auth import verify_token
+from kyberos.interface.server.routes import router
+from kyberos.interface.server.auth import verify_token
 
 @pytest.fixture
 def app():

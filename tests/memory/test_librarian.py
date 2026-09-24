@@ -1,16 +1,16 @@
 """
-Unit tests for auric.memory.librarian.
+Unit tests for kyberos.memory.librarian.
 
 Tests cover:
-- GrimoireHandler: file filtering, debounced dispatch, event routing, shutdown
-- GrimoireLibrarian.__init__: default/custom paths, vector store & encoder failures
-- GrimoireLibrarian.start / stop: observer lifecycle, directory creation, no-loop error
-- GrimoireLibrarian.index_file: deleted files, empty content, full embed+upsert pipeline,
+- ArchiveHandler: file filtering, debounced dispatch, event routing, shutdown
+- ArchiveLibrarian.__init__: default/custom paths, vector store & encoder failures
+- ArchiveLibrarian.start / stop: observer lifecycle, directory creation, no-loop error
+- ArchiveLibrarian.index_file: deleted files, empty content, full embed+upsert pipeline,
   error handling, whitespace-only chunks filtered
-- GrimoireLibrarian._chunk_text: short text, exact boundary, multi-chunk with overlap,
+- ArchiveLibrarian._chunk_text: short text, exact boundary, multi-chunk with overlap,
   empty/whitespace input
-- GrimoireLibrarian.search: success path, empty embeddings, exceptions, disabled store
-- GrimoireLibrarian.start_reindexing: concurrent file indexing across directories
+- ArchiveLibrarian.search: success path, empty embeddings, exceptions, disabled store
+- ArchiveLibrarian.start_reindexing: concurrent file indexing across directories
 """
 
 import asyncio
@@ -52,39 +52,39 @@ def _mock_encoder(dim: int = 4):
 
 def _make_librarian(tmp_path, *, vector_store=None, encoder=None):
     """
-    Create a GrimoireLibrarian with mocked dependencies,
+    Create a ArchiveLibrarian with mocked dependencies,
     bypassing the real ChromaStore and EmbeddingWrapper init.
     """
-    grimoire = tmp_path / "grimoire"
+    archive = tmp_path / "archive"
     memories = tmp_path / "memories"
-    grimoire.mkdir(exist_ok=True)
+    archive.mkdir(exist_ok=True)
     memories.mkdir(exist_ok=True)
 
-    with patch("auric.memory.librarian.ChromaStore") as MockChroma, \
-         patch("auric.memory.librarian.load_config") as mock_config, \
-         patch("auric.memory.librarian.EmbeddingWrapper") as MockEncoder:
+    with patch("kyberos.memory.librarian.ChromaStore") as MockChroma, \
+         patch("kyberos.memory.librarian.load_config") as mock_config, \
+         patch("kyberos.memory.librarian.EmbeddingWrapper") as MockEncoder:
 
         MockChroma.return_value = vector_store or _mock_vector_store()
         MockEncoder.return_value = encoder or _mock_encoder()
         mock_config.return_value = MagicMock()
 
-        from auric.memory.librarian import GrimoireLibrarian
-        lib = GrimoireLibrarian(grimoire_path=grimoire, memories_path=memories)
+        from kyberos.memory.librarian import ArchiveLibrarian
+        lib = ArchiveLibrarian(archive_path=archive, memories_path=memories)
 
     return lib
 
 
 # ===========================================================================
-# Tests: GrimoireHandler — File Filtering
+# Tests: ArchiveHandler — File Filtering
 # ===========================================================================
 
-class TestGrimoireHandlerFiltering:
+class TestArchiveHandlerFiltering:
 
     def _make_handler(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = MagicMock()
         callback = MagicMock()
-        return GrimoireHandler(loop=loop, callback=callback, debounce_seconds=0.1)
+        return ArchiveHandler(loop=loop, callback=callback, debounce_seconds=0.1)
 
     def test_ignores_dotfiles(self):
         handler = self._make_handler()
@@ -114,16 +114,16 @@ class TestGrimoireHandlerFiltering:
 
 
 # ===========================================================================
-# Tests: GrimoireHandler — Event Routing
+# Tests: ArchiveHandler — Event Routing
 # ===========================================================================
 
-class TestGrimoireHandlerEvents:
+class TestArchiveHandlerEvents:
 
     def _make_handler(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = MagicMock()
         callback = MagicMock()
-        handler = GrimoireHandler(loop=loop, callback=callback)
+        handler = ArchiveHandler(loop=loop, callback=callback)
         handler._dispatch_update = MagicMock()
         return handler
 
@@ -163,31 +163,31 @@ class TestGrimoireHandlerEvents:
 
 
 # ===========================================================================
-# Tests: GrimoireHandler — Dispatch & Debounce
+# Tests: ArchiveHandler — Dispatch & Debounce
 # ===========================================================================
 
-class TestGrimoireHandlerDispatch:
+class TestArchiveHandlerDispatch:
 
     def test_dispatch_ignores_filtered_files(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = MagicMock()
-        handler = GrimoireHandler(loop=loop, callback=MagicMock())
+        handler = ArchiveHandler(loop=loop, callback=MagicMock())
         handler._dispatch_update("/some/file.py")
         loop.call_soon_threadsafe.assert_not_called()
 
     def test_dispatch_calls_threadsafe_for_valid_files(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = MagicMock()
-        handler = GrimoireHandler(loop=loop, callback=MagicMock())
+        handler = ArchiveHandler(loop=loop, callback=MagicMock())
         handler._dispatch_update("/some/file.md")
         loop.call_soon_threadsafe.assert_called_once_with(
             handler._schedule_debounce, "/some/file.md"
         )
 
     def test_schedule_debounce_cancels_existing_task(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = MagicMock()
-        handler = GrimoireHandler(loop=loop, callback=MagicMock())
+        handler = ArchiveHandler(loop=loop, callback=MagicMock())
         handler._debounce_and_index = MagicMock()  # Prevent real coroutine creation
 
         existing_task = MagicMock()
@@ -203,9 +203,9 @@ class TestGrimoireHandlerDispatch:
         assert handler.active_tasks["/path/file.md"] is new_task
 
     def test_schedule_debounce_does_not_cancel_completed_task(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = MagicMock()
-        handler = GrimoireHandler(loop=loop, callback=MagicMock())
+        handler = ArchiveHandler(loop=loop, callback=MagicMock())
         handler._debounce_and_index = MagicMock()  # Prevent real coroutine creation
 
         existing_task = MagicMock()
@@ -222,14 +222,14 @@ class TestGrimoireHandlerDispatch:
 
 
 # ===========================================================================
-# Tests: GrimoireHandler — Shutdown
+# Tests: ArchiveHandler — Shutdown
 # ===========================================================================
 
-class TestGrimoireHandlerShutdown:
+class TestArchiveHandlerShutdown:
 
     def test_shutdown_cancels_pending_tasks(self):
-        from auric.memory.librarian import GrimoireHandler
-        handler = GrimoireHandler(loop=MagicMock(), callback=MagicMock())
+        from kyberos.memory.librarian import ArchiveHandler
+        handler = ArchiveHandler(loop=MagicMock(), callback=MagicMock())
 
         t1 = MagicMock()
         t1.done.return_value = False
@@ -244,8 +244,8 @@ class TestGrimoireHandlerShutdown:
         assert handler.active_tasks == {}
 
     def test_shutdown_skips_completed_tasks(self):
-        from auric.memory.librarian import GrimoireHandler
-        handler = GrimoireHandler(loop=MagicMock(), callback=MagicMock())
+        from kyberos.memory.librarian import ArchiveHandler
+        handler = ArchiveHandler(loop=MagicMock(), callback=MagicMock())
 
         done_task = MagicMock()
         done_task.done.return_value = True
@@ -257,24 +257,24 @@ class TestGrimoireHandlerShutdown:
         assert handler.active_tasks == {}
 
     def test_shutdown_on_empty(self):
-        from auric.memory.librarian import GrimoireHandler
-        handler = GrimoireHandler(loop=MagicMock(), callback=MagicMock())
+        from kyberos.memory.librarian import ArchiveHandler
+        handler = ArchiveHandler(loop=MagicMock(), callback=MagicMock())
         handler.shutdown()  # Should not raise
         assert handler.active_tasks == {}
 
 
 # ===========================================================================
-# Tests: GrimoireHandler — Debounce & Index (async)
+# Tests: ArchiveHandler — Debounce & Index (async)
 # ===========================================================================
 
-class TestGrimoireHandlerDebounceAsync:
+class TestArchiveHandlerDebounceAsync:
 
     @pytest.mark.asyncio
     async def test_debounce_calls_callback(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = asyncio.get_running_loop()
         callback = MagicMock()
-        handler = GrimoireHandler(loop=loop, callback=callback, debounce_seconds=0.01)
+        handler = ArchiveHandler(loop=loop, callback=callback, debounce_seconds=0.01)
 
         await handler._debounce_and_index("/path/file.md")
 
@@ -282,10 +282,10 @@ class TestGrimoireHandlerDebounceAsync:
 
     @pytest.mark.asyncio
     async def test_debounce_cleans_up_active_tasks(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = asyncio.get_running_loop()
         callback = MagicMock()
-        handler = GrimoireHandler(loop=loop, callback=callback, debounce_seconds=0.01)
+        handler = ArchiveHandler(loop=loop, callback=callback, debounce_seconds=0.01)
 
         task = loop.create_task(handler._debounce_and_index("/path/file.md"))
         handler.active_tasks["/path/file.md"] = task
@@ -295,62 +295,62 @@ class TestGrimoireHandlerDebounceAsync:
 
     @pytest.mark.asyncio
     async def test_debounce_handles_callback_exception(self):
-        from auric.memory.librarian import GrimoireHandler
+        from kyberos.memory.librarian import ArchiveHandler
         loop = asyncio.get_running_loop()
         callback = MagicMock(side_effect=RuntimeError("boom"))
-        handler = GrimoireHandler(loop=loop, callback=callback, debounce_seconds=0.01)
+        handler = ArchiveHandler(loop=loop, callback=callback, debounce_seconds=0.01)
 
         # Should not raise — exception is caught and logged
         await handler._debounce_and_index("/path/file.md")
 
 
 # ===========================================================================
-# Tests: GrimoireLibrarian.__init__
+# Tests: ArchiveLibrarian.__init__
 # ===========================================================================
 
 class TestLibrarianInit:
 
     def test_default_paths(self):
-        with patch("auric.memory.librarian.ChromaStore") as MockChroma, \
-             patch("auric.memory.librarian.load_config") as mock_cfg, \
-             patch("auric.memory.librarian.EmbeddingWrapper") as MockEnc, \
-             patch("auric.memory.librarian.AURIC_ROOT", Path("/fake/root")):
+        with patch("kyberos.memory.librarian.ChromaStore") as MockChroma, \
+             patch("kyberos.memory.librarian.load_config") as mock_cfg, \
+             patch("kyberos.memory.librarian.EmbeddingWrapper") as MockEnc, \
+             patch("kyberos.memory.librarian.KYBEROS_ROOT", Path("/fake/root")):
             MockChroma.return_value = _mock_vector_store()
             MockEnc.return_value = _mock_encoder()
             mock_cfg.return_value = MagicMock()
 
-            from auric.memory.librarian import GrimoireLibrarian
-            lib = GrimoireLibrarian()
+            from kyberos.memory.librarian import ArchiveLibrarian
+            lib = ArchiveLibrarian()
 
-            assert lib.grimoire_path == Path("/fake/root/grimoire")
+            assert lib.archive_path == Path("/fake/root/archive")
             assert lib.memories_path == Path("/fake/root/memories")
 
     def test_custom_paths(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        assert lib.grimoire_path == tmp_path / "grimoire"
+        assert lib.archive_path == tmp_path / "archive"
         assert lib.memories_path == tmp_path / "memories"
 
     def test_vector_store_failure_disables_rag(self):
-        with patch("auric.memory.librarian.ChromaStore", side_effect=RuntimeError("chroma down")), \
-             patch("auric.memory.librarian.load_config"), \
-             patch("auric.memory.librarian.EmbeddingWrapper"):
+        with patch("kyberos.memory.librarian.ChromaStore", side_effect=RuntimeError("chroma down")), \
+             patch("kyberos.memory.librarian.load_config"), \
+             patch("kyberos.memory.librarian.EmbeddingWrapper"):
 
-            from auric.memory.librarian import GrimoireLibrarian
-            lib = GrimoireLibrarian(grimoire_path=Path("/tmp/g"), memories_path=Path("/tmp/m"))
+            from kyberos.memory.librarian import ArchiveLibrarian
+            lib = ArchiveLibrarian(archive_path=Path("/tmp/g"), memories_path=Path("/tmp/m"))
 
             assert lib.vector_store is None
             assert lib.encoder is None
 
     def test_encoder_failure_nullifies_vector_store(self, tmp_path):
-        with patch("auric.memory.librarian.ChromaStore") as MockChroma, \
-             patch("auric.memory.librarian.load_config") as mock_cfg, \
-             patch("auric.memory.librarian.EmbeddingWrapper", side_effect=RuntimeError("model gone")):
+        with patch("kyberos.memory.librarian.ChromaStore") as MockChroma, \
+             patch("kyberos.memory.librarian.load_config") as mock_cfg, \
+             patch("kyberos.memory.librarian.EmbeddingWrapper", side_effect=RuntimeError("model gone")):
             MockChroma.return_value = _mock_vector_store()
             mock_cfg.return_value = MagicMock()
 
-            from auric.memory.librarian import GrimoireLibrarian
-            lib = GrimoireLibrarian(
-                grimoire_path=tmp_path / "grimoire",
+            from kyberos.memory.librarian import ArchiveLibrarian
+            lib = ArchiveLibrarian(
+                archive_path=tmp_path / "archive",
                 memories_path=tmp_path / "memories",
             )
 
@@ -359,7 +359,7 @@ class TestLibrarianInit:
 
 
 # ===========================================================================
-# Tests: GrimoireLibrarian.start / stop
+# Tests: ArchiveLibrarian.start / stop
 # ===========================================================================
 
 class TestLibrarianStartStop:
@@ -369,36 +369,36 @@ class TestLibrarianStartStop:
         lib = _make_librarian(tmp_path)
         # Remove dirs to test auto-creation
         import shutil
-        shutil.rmtree(lib.grimoire_path)
+        shutil.rmtree(lib.archive_path)
         shutil.rmtree(lib.memories_path)
 
-        with patch("auric.memory.librarian.Observer") as MockObserver:
+        with patch("kyberos.memory.librarian.Observer") as MockObserver:
             mock_obs = MagicMock()
             MockObserver.return_value = mock_obs
             lib.start()
 
-        assert lib.grimoire_path.exists()
+        assert lib.archive_path.exists()
         assert lib.memories_path.exists()
 
     @pytest.mark.asyncio
     async def test_start_creates_observer(self, tmp_path):
         lib = _make_librarian(tmp_path)
 
-        with patch("auric.memory.librarian.Observer") as MockObserver:
+        with patch("kyberos.memory.librarian.Observer") as MockObserver:
             mock_obs = MagicMock()
             MockObserver.return_value = mock_obs
             lib.start()
 
         assert lib.observer is mock_obs
         mock_obs.start.assert_called_once()
-        assert mock_obs.schedule.call_count == 2  # grimoire + memories
+        assert mock_obs.schedule.call_count == 2  # archive + memories
 
     @pytest.mark.asyncio
     async def test_start_without_loop_returns_gracefully(self, tmp_path):
         lib = _make_librarian(tmp_path)
 
         # Run outside of an async context by simulating RuntimeError
-        with patch("auric.memory.librarian.asyncio.get_running_loop", side_effect=RuntimeError):
+        with patch("kyberos.memory.librarian.asyncio.get_running_loop", side_effect=RuntimeError):
             lib.start()
 
         assert lib.observer is None
@@ -424,7 +424,7 @@ class TestLibrarianStartStop:
 
 
 # ===========================================================================
-# Tests: GrimoireLibrarian._chunk_text
+# Tests: ArchiveLibrarian._chunk_text
 # ===========================================================================
 
 class TestChunkText:
@@ -486,7 +486,7 @@ class TestChunkText:
 
 
 # ===========================================================================
-# Tests: GrimoireLibrarian.index_file
+# Tests: ArchiveLibrarian.index_file
 # ===========================================================================
 
 class TestIndexFile:
@@ -496,17 +496,17 @@ class TestIndexFile:
         lib.vector_store = None
 
         # Should not raise
-        lib.index_file(str(tmp_path / "grimoire" / "nonexistent.md"))
+        lib.index_file(str(tmp_path / "archive" / "nonexistent.md"))
 
     def test_returns_early_if_no_encoder(self, tmp_path):
         lib = _make_librarian(tmp_path)
         lib.encoder = None
 
-        lib.index_file(str(tmp_path / "grimoire" / "nonexistent.md"))
+        lib.index_file(str(tmp_path / "archive" / "nonexistent.md"))
 
     def test_deleted_file_removes_from_index(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        missing = tmp_path / "grimoire" / "gone.md"
+        missing = tmp_path / "archive" / "gone.md"
 
         lib.index_file(str(missing))
 
@@ -516,7 +516,7 @@ class TestIndexFile:
 
     def test_empty_file_deletes_old_entries_only(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        empty_file = tmp_path / "grimoire" / "empty.md"
+        empty_file = tmp_path / "archive" / "empty.md"
         empty_file.write_text("", encoding="utf-8")
 
         lib.index_file(str(empty_file))
@@ -528,7 +528,7 @@ class TestIndexFile:
 
     def test_whitespace_only_file_no_upsert(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        ws_file = tmp_path / "grimoire" / "whitespace.md"
+        ws_file = tmp_path / "archive" / "whitespace.md"
         ws_file.write_text("   \n  \t  \n  ", encoding="utf-8")
 
         lib.index_file(str(ws_file))
@@ -537,7 +537,7 @@ class TestIndexFile:
 
     def test_full_index_pipeline(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        test_file = tmp_path / "grimoire" / "test.md"
+        test_file = tmp_path / "archive" / "test.md"
         test_file.write_text("Hello world, this is a test document.", encoding="utf-8")
 
         lib.index_file(str(test_file))
@@ -558,7 +558,7 @@ class TestIndexFile:
 
     def test_index_file_uses_md5_hash_ids(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        test_file = tmp_path / "grimoire" / "test.md"
+        test_file = tmp_path / "archive" / "test.md"
         test_file.write_text("Content here.", encoding="utf-8")
 
         lib.index_file(str(test_file))
@@ -569,7 +569,7 @@ class TestIndexFile:
 
     def test_index_file_metadata_contains_source(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        test_file = tmp_path / "grimoire" / "info.md"
+        test_file = tmp_path / "archive" / "info.md"
         test_file.write_text("Some info.", encoding="utf-8")
 
         lib.index_file(str(test_file))
@@ -582,7 +582,7 @@ class TestIndexFile:
 
     def test_index_file_deletes_old_entries_before_upserting(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        test_file = tmp_path / "grimoire" / "update.md"
+        test_file = tmp_path / "archive" / "update.md"
         test_file.write_text("Updated content.", encoding="utf-8")
 
         call_order = []
@@ -597,7 +597,7 @@ class TestIndexFile:
         lib = _make_librarian(tmp_path)
         lib.encoder.encode.side_effect = RuntimeError("encoding failed")
 
-        test_file = tmp_path / "grimoire" / "bad.md"
+        test_file = tmp_path / "archive" / "bad.md"
         test_file.write_text("Content.", encoding="utf-8")
 
         # Should not raise — error is caught and logged
@@ -608,7 +608,7 @@ class TestIndexFile:
         lib = _make_librarian(tmp_path)
         lib.vector_store.batch_upsert.side_effect = RuntimeError("db error")
 
-        test_file = tmp_path / "grimoire" / "bad.md"
+        test_file = tmp_path / "archive" / "bad.md"
         test_file.write_text("Content.", encoding="utf-8")
 
         # Should not raise
@@ -616,7 +616,7 @@ class TestIndexFile:
 
     def test_multi_chunk_file(self, tmp_path):
         lib = _make_librarian(tmp_path)
-        test_file = tmp_path / "grimoire" / "big.md"
+        test_file = tmp_path / "archive" / "big.md"
         # Write content that will produce multiple chunks (default chunk_size=1000)
         test_file.write_text("word " * 500, encoding="utf-8")  # 2500 chars
 
@@ -632,7 +632,7 @@ class TestIndexFile:
         # Monkeypatch _chunk_text to return a mix of real and whitespace chunks
         lib._chunk_text = MagicMock(return_value=["real content", "   \n  ", "more content"])
 
-        test_file = tmp_path / "grimoire" / "mixed.md"
+        test_file = tmp_path / "archive" / "mixed.md"
         test_file.write_text("content", encoding="utf-8")
 
         lib.index_file(str(test_file))
@@ -646,7 +646,7 @@ class TestIndexFile:
     def test_index_file_reads_utf8_with_replace(self, tmp_path):
         """Files with encoding issues should still be indexed (errors='replace')."""
         lib = _make_librarian(tmp_path)
-        test_file = tmp_path / "grimoire" / "encoded.md"
+        test_file = tmp_path / "archive" / "encoded.md"
         # Write valid content and verify it's processed
         test_file.write_bytes("Hello \xc3\xa9 world".encode("utf-8"))
 
@@ -655,7 +655,7 @@ class TestIndexFile:
 
 
 # ===========================================================================
-# Tests: GrimoireLibrarian.search
+# Tests: ArchiveLibrarian.search
 # ===========================================================================
 
 class TestSearch:
@@ -726,7 +726,7 @@ class TestSearch:
 
 
 # ===========================================================================
-# Tests: GrimoireLibrarian.start_reindexing
+# Tests: ArchiveLibrarian.start_reindexing
 # ===========================================================================
 
 class TestStartReindexing:
@@ -736,8 +736,8 @@ class TestStartReindexing:
         lib = _make_librarian(tmp_path)
 
         # Create test files
-        (tmp_path / "grimoire" / "spell1.md").write_text("Spell one", encoding="utf-8")
-        (tmp_path / "grimoire" / "spell2.md").write_text("Spell two", encoding="utf-8")
+        (tmp_path / "archive" / "spell1.md").write_text("Spell one", encoding="utf-8")
+        (tmp_path / "archive" / "spell2.md").write_text("Spell two", encoding="utf-8")
         (tmp_path / "memories" / "2026-02-19.md").write_text("Daily log", encoding="utf-8")
 
         # Track calls via side_effect
@@ -760,9 +760,9 @@ class TestStartReindexing:
     async def test_reindexing_skips_non_md_files(self, tmp_path):
         lib = _make_librarian(tmp_path)
 
-        (tmp_path / "grimoire" / "spell.md").write_text("Spell", encoding="utf-8")
-        (tmp_path / "grimoire" / "config.json").write_text("{}", encoding="utf-8")
-        (tmp_path / "grimoire" / "script.py").write_text("pass", encoding="utf-8")
+        (tmp_path / "archive" / "spell.md").write_text("Spell", encoding="utf-8")
+        (tmp_path / "archive" / "config.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "archive" / "script.py").write_text("pass", encoding="utf-8")
 
         indexed_files = []
         original_index = lib.index_file
@@ -778,7 +778,7 @@ class TestStartReindexing:
     async def test_reindexing_handles_nested_dirs(self, tmp_path):
         lib = _make_librarian(tmp_path)
 
-        nested = tmp_path / "grimoire" / "subdir" / "deep"
+        nested = tmp_path / "archive" / "subdir" / "deep"
         nested.mkdir(parents=True)
         (nested / "nested.md").write_text("Nested content", encoding="utf-8")
 
@@ -805,7 +805,7 @@ class TestStartReindexing:
 
         # Create several files
         for i in range(8):
-            (tmp_path / "grimoire" / f"file{i}.md").write_text(f"Content {i}", encoding="utf-8")
+            (tmp_path / "archive" / f"file{i}.md").write_text(f"Content {i}", encoding="utf-8")
 
         call_timestamps = []
 

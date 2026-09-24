@@ -19,4 +19,4 @@ jobs:
 
       - name: Run tests
         # uv run automatically handles the virtual environment
-        run: uv run pytest --cov=auric tests/
+        run: uv run pytest --cov=kyberos tests/

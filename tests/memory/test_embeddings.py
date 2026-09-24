@@ -1,5 +1,5 @@
 """
-Unit tests for auric.memory.embeddings.EmbeddingWrapper.
+Unit tests for kyberos.memory.embeddings.EmbeddingWrapper.
 
 Tests cover:
 - __init__ with agents.models embeddings_model config (enabled, disabled, google→gemini alias)
@@ -35,7 +35,7 @@ def _make_config(
     agent_embeddings_model=None,
 ):
     """
-    Build a minimal mock AuricConfig with the fields that EmbeddingWrapper
+    Build a minimal mock KyberosConfig with the fields that EmbeddingWrapper
     actually reads.
     """
     config = MagicMock()
@@ -66,13 +66,13 @@ def _build_wrapper(config, *, patch_st=True, st_return=None):
     Instantiate an EmbeddingWrapper while patching SentenceTransformer so
     that no real model download occurs.  Returns (wrapper, mock_ST_class).
     """
-    with patch("auric.memory.embeddings.SentenceTransformer") as MockST:
+    with patch("kyberos.memory.embeddings.SentenceTransformer") as MockST:
         if st_return is not None:
             MockST.return_value = st_return
         else:
             MockST.return_value = MagicMock()
 
-        from auric.memory.embeddings import EmbeddingWrapper
+        from kyberos.memory.embeddings import EmbeddingWrapper
         wrapper = EmbeddingWrapper(config)
 
     return wrapper, MockST
@@ -166,8 +166,8 @@ class TestInitLocalProvider:
     def test_local_model_load_failure_raises(self):
         cfg = _make_config(embeddings_provider="local", embeddings_model="bad-model")
 
-        with patch("auric.memory.embeddings.SentenceTransformer", side_effect=OSError("not found")):
-            from auric.memory.embeddings import EmbeddingWrapper
+        with patch("kyberos.memory.embeddings.SentenceTransformer", side_effect=OSError("not found")):
+            from kyberos.memory.embeddings import EmbeddingWrapper
             with pytest.raises(OSError, match="not found"):
                 EmbeddingWrapper(cfg)
 
@@ -397,7 +397,7 @@ class TestEncodeOpenAI:
             ]
         }
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
             result = wrapper.encode(["hello", "world"])
 
             mock_emb.assert_called_once_with(
@@ -418,7 +418,7 @@ class TestEncodeOpenAI:
 
         fake_response = {"data": [{"embedding": [1.0, 2.0]}]}
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response):
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response):
             result = wrapper.encode("single sentence")
 
         assert result.shape == (1, 2)
@@ -434,7 +434,7 @@ class TestEncodeOpenAI:
 
         fake_response = {"data": [{"embedding": [1.0]}]}
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
             wrapper.encode("test")
             model_arg = mock_emb.call_args[1]["model"]
             assert not model_arg.startswith("openai/")
@@ -458,7 +458,7 @@ class TestEncodeGemini:
 
         fake_response = {"data": [{"embedding": [0.5, 0.6]}]}
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
             wrapper.encode("test")
             model_arg = mock_emb.call_args[1]["model"]
             assert model_arg == "gemini/models/text-embedding-004"
@@ -474,7 +474,7 @@ class TestEncodeGemini:
 
         fake_response = {"data": [{"embedding": [0.5]}]}
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
             wrapper.encode("test")
             model_arg = mock_emb.call_args[1]["model"]
             assert model_arg == "gemini/text-embedding-004"
@@ -496,7 +496,7 @@ class TestEncodeGemini:
             ]
         }
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response):
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response):
             result = wrapper.encode(["a", "b", "c"])
 
         assert result.shape == (3, 2)
@@ -519,7 +519,7 @@ class TestEncodeErrors:
         wrapper, _ = _build_wrapper(cfg)
 
         with patch(
-            "auric.memory.embeddings.litellm.embedding",
+            "kyberos.memory.embeddings.litellm.embedding",
             side_effect=RuntimeError("API timeout"),
         ):
             with pytest.raises(RuntimeError, match="API timeout"):
@@ -534,7 +534,7 @@ class TestEncodeErrors:
         wrapper, _ = _build_wrapper(cfg)
 
         with patch(
-            "auric.memory.embeddings.litellm.embedding",
+            "kyberos.memory.embeddings.litellm.embedding",
             side_effect=ConnectionError("network down"),
         ):
             with pytest.raises(ConnectionError, match="network down"):
@@ -577,7 +577,7 @@ class TestEncodeReturnTypes:
 
         fake_response = {"data": [{"embedding": [1.0, 2.0]}]}
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response):
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response):
             result = wrapper.encode("hello")
 
         assert isinstance(result, np.ndarray)
@@ -592,7 +592,7 @@ class TestEncodeReturnTypes:
 
         fake_response = {"data": [{"embedding": [1.0, 2.0]}]}
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response):
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response):
             result = wrapper.encode("hello")
 
         assert isinstance(result, np.ndarray)
@@ -616,7 +616,7 @@ class TestEncodeEdgeCases:
         long_text = "word " * 10000  # ~50k chars
         fake_response = {"data": [{"embedding": [0.0] * 128}]}
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
             wrapper.encode(long_text)
             # Verify the full text was passed (as a list)
             passed_input = mock_emb.call_args[1]["input"]
@@ -636,7 +636,7 @@ class TestEncodeEdgeCases:
         fake_data = [{"embedding": [float(i)]} for i in range(50)]
         fake_response = {"data": fake_data}
 
-        with patch("auric.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
+        with patch("kyberos.memory.embeddings.litellm.embedding", return_value=fake_response) as mock_emb:
             result = wrapper.encode(sentences)
             mock_emb.assert_called_once()
             assert result.shape == (50, 1)

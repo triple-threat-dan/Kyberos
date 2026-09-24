@@ -3,25 +3,25 @@ set -e
 
 # --- Configuration ---
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PID_FILE="$REPO_ROOT/.auric/auric.pid"
+PID_FILE="$REPO_ROOT/.kyberos/kyberos.pid"
 WAS_RUNNING=false
 
-echo "🔮 Initiating OpenAuric Update Sequence..."
+echo "🔮 Initiating Kyberos Update Sequence..."
 
-# --- 1. Check if Auric is Running ---
+# --- 1. Check if Kyberos is Running ---
 
 if [ -f "$PID_FILE" ]; then
-    AURIC_PID=$(cat "$PID_FILE" 2>/dev/null)
-    if [ -n "$AURIC_PID" ] && [ "$AURIC_PID" -eq "$AURIC_PID" ] 2>/dev/null; then
-        if kill -0 "$AURIC_PID" 2>/dev/null; then
-            echo "ℹ️  Auric is currently running (PID: $AURIC_PID)."
+    KYBEROS_PID=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$KYBEROS_PID" ] && [ "$KYBEROS_PID" -eq "$KYBEROS_PID" ] 2>/dev/null; then
+        if kill -0 "$KYBEROS_PID" 2>/dev/null; then
+            echo "ℹ️  Kyberos is currently running (PID: $KYBEROS_PID)."
             WAS_RUNNING=true
             
-            echo "🛑 Stopping Auric..."
-            if kill "$AURIC_PID" 2>/dev/null; then
-                echo "✅ Auric stopped."
+            echo "🛑 Stopping Kyberos..."
+            if kill "$KYBEROS_PID" 2>/dev/null; then
+                echo "✅ Kyberos stopped."
             else
-                echo "⚠️  Failed to stop Auric gracefully."
+                echo "⚠️  Failed to stop Kyberos gracefully."
             fi
             
             # Give it a moment to fully shutdown
@@ -58,11 +58,11 @@ fi
 
 # --- 3. Reinstall Package ---
 
-echo "📦 Reinstalling OpenAuric package..."
+echo "📦 Reinstalling Kyberos package..."
 
 if [ -f "$REPO_ROOT/pyproject.toml" ]; then
     uv tool install "$REPO_ROOT" --force
-    echo "✅ OpenAuric reinstalled successfully."
+    echo "✅ Kyberos reinstalled successfully."
 else
     echo "⚠️  Warning: pyproject.toml not found. Skipping package reinstall."
 fi
@@ -70,21 +70,21 @@ fi
 # --- 4. Restart if it was running ---
 
 if [ "$WAS_RUNNING" = true ]; then
-    echo "🚀 Restarting Auric..."
+    echo "🚀 Restarting Kyberos..."
     
-    AURIC_BIN=$(which auric 2>/dev/null || echo "$HOME/.local/bin/auric")
+    KYBEROS_BIN=$(which kyberos 2>/dev/null || echo "$HOME/.local/bin/kyberos ")
     
-    if [ -x "$AURIC_BIN" ]; then
-        # Start auric in background so it doesn't block this script
-        nohup "$AURIC_BIN" start > /dev/null 2>&1 &
-        echo "✅ Auric restarted."
+    if [ -x "$KYBEROS_BIN" ]; then
+        # Start kyberos in background so it doesn't block this script
+        nohup "$KYBEROS_BIN" start > /dev/null 2>&1 &
+        echo "✅ Kyberos restarted."
     else
-        echo "⚠️  Warning: Could not find auric executable. Please start manually with: auric start"
+        echo "⚠️  Warning: Could not find kyberos executable. Please start manually with: kyberos start"
     fi
 fi
 
-echo "✨ OpenAuric update complete."
+echo "✨ Kyberos update complete."
 
 if [ "$WAS_RUNNING" = false ]; then
-    echo "   Run 'auric start' to begin."
+    echo "   Run 'kyberos start' to begin."
 fi
