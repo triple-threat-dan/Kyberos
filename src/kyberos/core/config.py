@@ -115,6 +115,11 @@ class LLMKeys(BaseModel):
     anthropic: Optional[str] = None
     gemini: Optional[str] = None
     openrouter: Optional[str] = None
+    bedrock: Optional[str] = None
+    bedrock_access_key_id: Optional[str] = None
+    bedrock_secret_access_key: Optional[str] = None
+    bedrock_session_token: Optional[str] = None
+    bedrock_region: Optional[str] = None
     brave: Optional[str] = None
 
 class EmbeddingsConfig(BaseModel):
