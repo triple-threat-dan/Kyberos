@@ -10,11 +10,11 @@
 - **Name:** [Your Name Here]
 - **Pronouns:** [They/Them]
 - **Location:** [City, Country]
-- **Profession:** [Digital Wizard / Developer / Writer]
+- **Profession:** [Your profession here]
 - **Primary Language:** English
 - **Timezone:** UTC-5
 - **Facts and Notes:**
   - [Add any facts or notes about your user here]
 - **Preferences:**
-  - **Communication Style:** Concise, technical, and slightly arcane.
+  - **Communication Style:** Concise, technical, but friendly.
   - **Code Style:** Pythonic, typed, and well-documented.

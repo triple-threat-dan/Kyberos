@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import json5
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger("kyberos.config")
@@ -77,9 +77,15 @@ class AgentsConfig(BaseModel):
     models: Dict[str, ModelConfig] = Field(default_factory=lambda: {
         "smart_model": ModelConfig(provider="gemini", model="gemini/gemini-2.5-pro"),
         "fast_model": ModelConfig(provider="gemini", model="gemini/gemini-2.5-flash"),
+        "decision_model": ModelConfig(provider="typesafe", model="jev-latest"),
         "heartbeat_model": ModelConfig(provider="gemini", model="gemini/gemini-2.5-flash"),
         "embeddings_model": ModelConfig(provider="auto", model="models/text-embedding-004")
     })
+
+    @model_validator(mode="after")
+    def add_decision_model_to_existing_configs(self) -> "AgentsConfig":
+        self.models.setdefault("decision_model", ModelConfig(provider="typesafe", model="jev-latest"))
+        return self
 
 class GatewayConfig(BaseModel):
     """Configuration for the API gateway."""
@@ -129,6 +135,7 @@ class LLMKeys(BaseModel):
     bedrock_session_token: Optional[str] = None
     bedrock_region: Optional[str] = None
     brave: Optional[str] = None
+    typesafe: Optional[str] = None
 
 class EmbeddingsConfig(BaseModel):
     """Configuration for embedding models."""

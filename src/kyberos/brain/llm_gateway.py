@@ -21,9 +21,9 @@ RE_CONTENT_DOUBLE = re.compile(r'"content":\s*"([^"]+)"')
 
 class LLMGateway:
     """
-    The Patron Interface (LLM Gateway) for Kyberos.
+    The LLM Gateway for Kyberos.
     
-    Abstracts interactions with AI models (Gemini, OpenAI, Anthropic, Local Ollama).
+    Abstracts interactions with AI models (Gemini, OpenAI, Anthropic, Local Ollama, etc.).
     Enforces resource constraints for local hardware by serializing requests.
     """
 

@@ -142,6 +142,19 @@ def test_config_loader_load_existing_valid(mock_kyberosroot):
     assert isinstance(loaded_config, KyberosConfig)
     assert loaded_config.debug is True
 
+
+def test_decision_config_defaults_and_legacy_models():
+    defaults = KyberosConfig()
+    assert defaults.agents.models["decision_model"].model == "jev-latest"
+    assert defaults.keys.typesafe is None
+
+    legacy = KyberosConfig.model_validate({
+        "agents": {"models": {"fast_model": {"provider": "gemini", "model": "test"}}},
+        "keys": {"typesafe": "test-key"},
+    })
+    assert legacy.agents.models["decision_model"].provider == "typesafe"
+    assert legacy.keys.typesafe == "test-key"
+
 def test_config_loader_load_existing_invalid(mock_kyberosroot):
     config_path = mock_kyberosroot / ConfigLoader.CONFIG_FILENAME
     mock_kyberosroot.mkdir(parents=True, exist_ok=True)

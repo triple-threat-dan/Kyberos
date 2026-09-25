@@ -1,5 +1,5 @@
 """
-API Routes for the Arcane Library (Web Dashboard).
+API Routes for the Web Dashboard.
 """
 
 import asyncio

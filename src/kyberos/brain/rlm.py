@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from kyberos.core.config import KyberosConfig, KYBEROS_WORKSPACE_DIR, KYBEROS_ROOT
 from kyberos.brain.llm_gateway import LLMGateway
+from kyberos.brain.decision_engine import DecisionEngine
 from kyberos.memory.librarian import ArchiveLibrarian
 from kyberos.memory.thread_manager import ThreadManager
 from kyberos.skills.tool_registry import ToolRegistry
@@ -49,6 +50,16 @@ class TaskContext(BaseModel):
     depth: int = 0
     parent_instruction: Optional[str] = None
     source: Optional[str] = "USER"
+
+
+class HeartbeatDecision(BaseModel):
+    actionable: bool = Field(
+        description=(
+            "Does the heartbeat content contain any task actionable at the current time? "
+            "Ignore Markdown headers and HTML comments. Compare any time conditions "
+            "with the current local date and time; future tasks are not actionable."
+        )
+    )
 
 # ==============================================================================
 # Recursion Guard
@@ -89,6 +100,7 @@ class RLMEngine:
     ):
         self.config = config
         self.gateway = gateway
+        self.decision_engine = DecisionEngine(config)
         self.librarian = librarian
         self.thread_manager = thread_manager
         self.protocol_manager = protocol_manager
@@ -103,72 +115,25 @@ class RLMEngine:
 
     async def check_heartbeat_necessity(self, user_query: str) -> bool:
         """
-        Performs a 'Lean Check' to see if the full agent is needed.
+        Performs a 'Lean Check' using JEV to see if the full agent is needed.
         Returns True if there is actionable content in the heartbeat message.
         """
-        # 1. Trivial check: If empty or just headers
         clean_query = user_query.strip()
         if not clean_query:
             return False
-            
-        # 2. Lean LLM Check
-        # We use the configured 'heartbeat_model' (likely a cheaper/faster model)
-        # to classify the text.
-        
-        # Helper to get time of day
-        now = datetime.now()
-        hour = now.hour
-        if 5 <= hour < 12:
-            period = "Morning"
-        elif 12 <= hour < 17:
-            period = "Afternoon"
-        elif 17 <= hour < 21:
-            period = "Evening"
-        else:
-            period = "Night"
-            
-        system_prompt = (
-            "You are the Heartbeat Monitor for Kyberos.\n"
-            "**GOAL**: Determine if the provided `HEARTBEAT.md` content contains **any** *actionable* tasks *for Current Time*.\n\n"
-            "**CONSTRAINTS**:\n"
-            "1. **Ignore Structure**: Ignore HTML comments (`<!-- -->`), and headers (`#`).\n"
-            "2. **Check for Actionable Tasks**: Look for instructions (e.g., '- Check database', '- Every morning...').\n"
-            "3. **STRICT TIME CHECK**: Compare the task's time condition against Current Time.\n"
-            "4. **OUTPUT FORMAT**: You MUST open a `<thinking>` block to evaluate the time for each task. You cannot do time math in your head.\n"
-            "   - If a task's time matches the Current Time, mark it as ACTIONABLE in your thinking block.\n"
-            "   - After closing the `</thinking>` block, if any task was actionable, output EXACTLY AND ONLY: VERDICT: YES\n"
-            "   - If no tasks were actionable, output EXACTLY AND ONLY: VERDICT: NO\n"
-            f"Current Time: {now.astimezone().strftime('%Y-%m-%d %I:%M %p %Z')} ({period})\n\n"
-        )
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Analyze this content:\n---\n{clean_query}\n---"}
-        ]
 
         try:
-            response = await self.gateway.chat_completion(
-                messages=messages,
-                tier="fast_model", 
-                # Allow enough tokens for a single positive analysis or a few negatives
-                max_tokens=1000 
+            decision = await self.decision_engine.decide(
+                HeartbeatDecision,
+                {
+                    "heartbeat_content": clean_query,
+                    "current_time": datetime.now().astimezone().isoformat(),
+                },
             )
-            
-            # Track cost for this lean check too
-            try:
-                self._track_cost(response)
-            except Exception as cost_err:
-                logger.warning(f"Failed to track cost for heartbeat check: {cost_err}")
-            
-            content = response.choices[0].message.content.strip().upper()
-            logger.info(f"Heartbeat Lean Check:\n{content}")
-            
-            return "VERDICT: YES" in content
-            
+            return decision.actionable
         except Exception as e:
-            logger.error(f"Heartbeat Lean Check Failed: {e}")
-            # Fail safe: if check fails, assume we should wake up (better to be noisy than miss a task)
-            return True 
+            logger.error("Heartbeat decision failed: %s", e)
+            return True
 
     async def think(self, user_query: str, depth: int = 0, session_id: Optional[str] = None, model_tier: str = "smart_model", source: str = "USER") -> str:
         """

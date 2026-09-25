@@ -358,6 +358,10 @@ Bedrock is optional. Install its AWS SDK dependency with `uv sync --extra bedroc
 
 For long-term IAM credentials, omit `bedrock_session_token`. Alternatively, set `keys.bedrock` to an Amazon Bedrock API key, or omit Bedrock credentials to use the standard AWS SDK credential chain. Set the AWS region in `bedrock_region` when using explicit credentials.
 
+### TypeSafe JEV heartbeat decisions
+
+Heartbeat actionability checks use TypeSafe AI's JEV decision model. Set `keys.typesafe` in `.kyberos/kyberos.json` to your TypeSafe API key. The `agents.models.decision_model` tier defaults to provider `typesafe` and model `jev-latest`; existing configs gain this tier when loaded. If JEV is unavailable or the key is missing, the heartbeat check assumes the content is actionable.
+
 ---
 
 ## Runtime State

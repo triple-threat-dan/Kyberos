@@ -241,35 +241,23 @@ class TestHeartbeatOptimization:
         with patch("kyberos.core.config.load_config", return_value=mock_config):
             engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager)
         
-        # Setup response
-        mock_response = Mock()
-        mock_response.choices = [Mock(message=Mock(content="Item: Fix bugs -> Actionable -> VERDICT: YES"))]
-        mock_response.usage = Mock(total_tokens=50)
-        mock_gateway.chat_completion.return_value = mock_response
-
-        # Mock cost limit check to pass
-        engine._track_cost = Mock() 
-        # But wait, check_heartbeat calls _track_cost, mocking it defeats the purpose of testing integration?
-        # Actually _track_cost is internal. The original test failing was due to response.usage being malformed.
-        # Here we fix response.usage.
-        # Let's NOT mock _track_cost if we can avoid it to test realistically.
-        # engine._track_cost IS mocked above? No.
+        engine.decision_engine.decide = AsyncMock(return_value=Mock(actionable=True))
         
         result = await engine.check_heartbeat_necessity("Remind me to check logs")
         assert result is True
         
-        call_args = mock_gateway.chat_completion.call_args
-        assert call_args[1]['tier'] == 'fast_model'
+        schema, context = engine.decision_engine.decide.await_args.args
+        assert schema.model_fields["actionable"].annotation is bool
+        assert context["heartbeat_content"] == "Remind me to check logs"
+        assert datetime.fromisoformat(context["current_time"]).tzinfo is not None
+        mock_gateway.chat_completion.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_heartbeat_return_false(self, mock_config, mock_gateway, mock_librarian, mock_thread_manager):
         with patch("kyberos.core.config.load_config", return_value=mock_config):
             engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager)
         
-        mock_response = Mock()
-        mock_response.choices = [Mock(message=Mock(content="Scanned all. No actionable items.\nVERDICT: NO"))]
-        mock_response.usage = Mock(total_tokens=50)
-        mock_gateway.chat_completion.return_value = mock_response
+        engine.decision_engine.decide = AsyncMock(return_value=Mock(actionable=False))
 
         result = await engine.check_heartbeat_necessity("# Header")
         assert result is False
@@ -280,11 +268,7 @@ class TestHeartbeatOptimization:
         with patch("kyberos.core.config.load_config", return_value=mock_config):
             engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager)
         
-        # Model reasons that task is for later
-        mock_response = Mock()
-        mock_response.choices = [Mock(message=Mock(content="Item: Remind evening -> Night!=Morning -> Skip\nVERDICT: NO"))]
-        mock_response.usage = Mock(total_tokens=50)
-        mock_gateway.chat_completion.return_value = mock_response
+        engine.decision_engine.decide = AsyncMock(return_value=Mock(actionable=False))
 
         result = await engine.check_heartbeat_necessity("Remind me this evening")
         assert result is False
@@ -293,7 +277,7 @@ class TestHeartbeatOptimization:
     async def test_heartbeat_exception_default_true(self, mock_config, mock_gateway, mock_librarian, mock_thread_manager):
         with patch("kyberos.core.config.load_config", return_value=mock_config):
             engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager)
-        mock_gateway.chat_completion.side_effect = Exception("API Error")
+        engine.decision_engine.decide = AsyncMock(side_effect=Exception("API Error"))
         
         result = await engine.check_heartbeat_necessity("Fail Open")
         assert result is True
