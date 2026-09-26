@@ -68,7 +68,12 @@ class ToolCategoryDecision(BaseModel):
     shell: bool = Field(description="Will this turn need shell commands or Python execution?")
     skills: bool = Field(description="Will this turn need to use a registered skill or spell?")
     protocol: bool = Field(description="Will this turn need an external protocol or messaging tool?")
-    recursion: bool = Field(description="Will this turn need to delegate a complex subtask to a sub-agent?")
+    needs_recursion: bool = Field(
+        description=(
+            "Does the current task require an independent, multi-step sub-agent? "
+            "Answer no when the current agent can complete it with its available tools."
+        )
+    )
 
 
 INTERNAL_TOOL_CATEGORIES = {
@@ -239,8 +244,9 @@ class RLMEngine:
             if depth + 1 <= max_depth:
                 categorized_schemas.append(("recursion", self._get_recursion_tool_schema()))
 
-            live_categories = {category for category, _ in categorized_schemas}
-            if live_categories and self.config.keys.typesafe:
+            available_categories = {category for category, _ in categorized_schemas}
+            live_categories = available_categories - {"recursion"}
+            if available_categories and self.config.keys.typesafe:
                 try:
                     recent_turns = [
                         {"role": message["role"], "content": str(message.get("content") or "")[:1000]}
@@ -251,13 +257,15 @@ class RLMEngine:
                         {"request": user_query, "recent_turns": recent_turns},
                     )
                     live_categories = {
-                        category for category in live_categories if getattr(decision, category)
+                        category for category in available_categories
+                        if getattr(decision, "needs_recursion" if category == "recursion" else category)
                     }
                 except Exception as e:
-                    logger.warning("Tool category decision failed; using all tools: %s", e)
+                    logger.warning("Tool category decision failed; omitting recursion: %s", e)
             
             tools_schemas = [schema for category, schema in categorized_schemas if category in live_categories]
             tools_arg = tools_schemas or None
+            offered_tool_names = {schema["function"]["name"] for schema in tools_schemas}
 
             system_prompt = self._assemble_system_prompt(task_context, live_categories)
             messages[0]["content"] = system_prompt
@@ -335,11 +343,13 @@ class RLMEngine:
                 result_content = ""
 
                 if fn_name == "spawn_sub_agent":
-                    instruction = args.get("instruction")
-                    logger.info(f"Spawning Sub-Agent: {instruction[:50]}...")
-                    # RECURSION HAPPENS HERE
-                    sub_result = await self.think(instruction, depth=depth + 1, source=source)
-                    result_content = f"Sub-Agent Result: {sub_result}"
+                    if fn_name not in offered_tool_names:
+                        result_content = "ERROR: spawn_sub_agent is unavailable on this turn."
+                    else:
+                        instruction = args.get("instruction")
+                        logger.info(f"Spawning Sub-Agent: {instruction[:50]}...")
+                        sub_result = await self.think(instruction, depth=depth + 1, source=source)
+                        result_content = f"Sub-Agent Result: {sub_result}"
                 
                 else:
                     # Dynamic Tool Execution
@@ -497,9 +507,6 @@ class RLMEngine:
             ""
         ]
 
-        if (live_categories is None or "recursion" in live_categories) and task_context.depth + 1 <= self.config.agents.max_recursion:
-            tools_intro.append("- **spawn_sub_agent**: Delegates a complex sub-task to a recursive sub-agent. Use ONLY for tasks requiring independent multi-step reasoning or long-form content generation.")
-
         parts.append("\n".join(tools_intro))
 
         # Native schemas already describe routed tools. Keep legacy descriptions only
@@ -593,7 +600,7 @@ class RLMEngine:
             "type": "function",
             "function": {
                 "name": "spawn_sub_agent",
-                "description": "Delegates a complex sub-task to a recursive sub-agent. The sub-agent has its own context and tools. Use this ONLY for tasks that genuinely require independent multi-step reasoning, or long-form content generation (e.g. breaking novel writing into chapters, breaking documentation into sections or steps, etc.). Do NOT use this for simple content generation — just produce the content directly.",
+                "description": "Delegate work to a sub-agent with its own context and tools.",
                 "parameters": {
                     "type": "object",
                     "properties": {

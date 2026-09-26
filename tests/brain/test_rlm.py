@@ -128,7 +128,7 @@ class TestRLMEngineLogic:
         engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager,
                            protocol_manager=protocol, tool_registry=mock_tool_registry)
         engine.decision_engine.decide = AsyncMock(return_value=Mock(
-            memory=True, files=True, shell=False, skills=False, protocol=False, recursion=False
+            memory=True, files=True, shell=False, skills=False, protocol=False, needs_recursion=False
         ))
         mock_gateway.chat_completion.return_value = self._create_mock_resp(content="Done")
 
@@ -137,7 +137,7 @@ class TestRLMEngineLogic:
         tools = mock_gateway.chat_completion.await_args.kwargs["tools"]
         assert [tool["function"]["name"] for tool in tools] == ["memory_search", "read_file"]
         schema, state = engine.decision_engine.decide.await_args.args
-        assert set(schema.model_fields) == {"memory", "files", "shell", "skills", "protocol", "recursion"}
+        assert set(schema.model_fields) == {"memory", "files", "shell", "skills", "protocol", "needs_recursion"}
         assert state["request"] == "Find a note and read it"
         assert "make_report" not in mock_gateway.chat_completion.await_args.kwargs["messages"][0]["content"]
 
@@ -150,8 +150,8 @@ class TestRLMEngineLogic:
         engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager,
                            tool_registry=mock_tool_registry)
         engine.decision_engine.decide = AsyncMock(side_effect=[
-            Mock(memory=False, files=True, shell=False, skills=False, protocol=False, recursion=False),
-            Mock(memory=False, files=False, shell=True, skills=False, protocol=False, recursion=False),
+            Mock(memory=False, files=True, shell=False, skills=False, protocol=False, needs_recursion=False),
+            Mock(memory=False, files=False, shell=True, skills=False, protocol=False, needs_recursion=False),
         ])
         tool_call = Mock(id="call_1")
         tool_call.function.name = "read_file"
@@ -182,7 +182,56 @@ class TestRLMEngineLogic:
         assert await engine.think("Read a file") == "Done"
 
         names = [tool["function"]["name"] for tool in mock_gateway.chat_completion.await_args.kwargs["tools"]]
-        assert names == ["read_file", "spawn_sub_agent"]
+        assert names == ["read_file"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("needs_recursion", [True, False])
+    async def test_recursion_schema_requires_jev_yes(self, mock_config, mock_gateway, mock_librarian,
+                                                      mock_thread_manager, needs_recursion):
+        mock_config.keys.typesafe = "test-key"
+        engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager)
+        engine.decision_engine.decide = AsyncMock(return_value=Mock(needs_recursion=needs_recursion))
+        mock_gateway.chat_completion.return_value = self._create_mock_resp(content="Done")
+
+        assert await engine.think("Handle this task") == "Done"
+
+        tools = mock_gateway.chat_completion.await_args.kwargs["tools"]
+        assert (tools is not None) is needs_recursion
+        if tools:
+            assert [tool["function"]["name"] for tool in tools] == ["spawn_sub_agent"]
+            assert "Use this ONLY" not in tools[0]["function"]["description"]
+        assert "Delegates a complex sub-task" not in mock_gateway.chat_completion.await_args.kwargs["messages"][0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_recursion_depth_limit_overrides_jev(self, mock_config, mock_gateway, mock_librarian,
+                                                       mock_thread_manager):
+        mock_config.keys.typesafe = "test-key"
+        mock_config.agents.max_recursion = 0
+        engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager)
+        engine.decision_engine.decide = AsyncMock()
+        mock_gateway.chat_completion.return_value = self._create_mock_resp(content="Done")
+
+        assert await engine.think("Handle this task") == "Done"
+        assert mock_gateway.chat_completion.await_args.kwargs["tools"] is None
+        engine.decision_engine.decide.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unoffered_recursion_call_does_not_spawn(self, mock_config, mock_gateway, mock_librarian,
+                                                           mock_thread_manager):
+        mock_config.keys.typesafe = "test-key"
+        engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager)
+        engine.decision_engine.decide = AsyncMock(return_value=Mock(needs_recursion=False))
+        tool_call = Mock(id="call_1")
+        tool_call.function.name = "spawn_sub_agent"
+        tool_call.function.arguments = '{"instruction": "expensive task"}'
+        first_response = self._create_mock_resp(content=None, tool_calls=[tool_call])
+        first_response.choices[0].message.model_dump.return_value = {
+            "role": "assistant", "content": None, "tool_calls": []
+        }
+        mock_gateway.chat_completion.side_effect = [first_response, self._create_mock_resp(content="Done")]
+
+        assert await engine.think("Simple task") == "Done"
+        assert "spawn_sub_agent is unavailable" in str(mock_gateway.chat_completion.call_args_list[1].kwargs["messages"])
 
     @pytest.mark.asyncio
     async def test_think_loop_basic(self, mock_config, mock_gateway, mock_librarian, mock_thread_manager):
@@ -230,8 +279,10 @@ class TestRLMEngineLogic:
 
     @pytest.mark.asyncio
     async def test_think_recurse(self, mock_config, mock_gateway, mock_librarian, mock_thread_manager):
+        mock_config.keys.typesafe = "test-key"
         with patch("kyberos.core.config.load_config", return_value=mock_config):
             engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager)
+        engine.decision_engine.decide = AsyncMock(return_value=Mock(needs_recursion=True))
         
         # Turn 1: Spawn Sub Agent
         tool_call = Mock(id="call_1")
