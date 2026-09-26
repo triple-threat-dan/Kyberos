@@ -61,6 +61,28 @@ class HeartbeatDecision(BaseModel):
         )
     )
 
+
+class ToolCategoryDecision(BaseModel):
+    memory: bool = Field(description="Will this turn need to search memories or chat history?")
+    files: bool = Field(description="Will this turn need to list, read, write, or append files?")
+    shell: bool = Field(description="Will this turn need shell commands or Python execution?")
+    skills: bool = Field(description="Will this turn need to use a registered skill or spell?")
+    protocol: bool = Field(description="Will this turn need an external protocol or messaging tool?")
+    recursion: bool = Field(description="Will this turn need to delegate a complex subtask to a sub-agent?")
+
+
+INTERNAL_TOOL_CATEGORIES = {
+    "memory_search": "memory",
+    "query_chat_history": "memory",
+    "list_files": "files",
+    "read_file": "files",
+    "write_file": "files",
+    "append_file": "files",
+    "execute_powershell": "shell",
+    "execute_bash": "shell",
+    "run_python": "shell",
+}
+
 # ==============================================================================
 # Recursion Guard
 # ==============================================================================
@@ -171,16 +193,13 @@ class RLMEngine:
         action_history = []
         max_history = 10
 
-        # 3. Assemble System Prompt
-        system_prompt = self._assemble_system_prompt(task_context)
-
-        # 4. ReAct Loop
+        # 3. ReAct Loop: route tools and assemble the prompt for each turn.
         # We loop up to max_turns to allow for multi-step reasoning.
         max_turns = self.config.agents.max_turns
         current_turn = 0
         
         # We start with the base messages
-        messages = [{"role": "system", "content": system_prompt}]
+        messages = [{"role": "system", "content": ""}]
 
         # Inject Chat History (only at depth 0)
         if depth == 0 and session_id and self.gateway.audit_logger:
@@ -203,24 +222,44 @@ class RLMEngine:
             if self.tool_registry:
                 self.tool_registry.load_skills()
             
-            # Re-collect Tool Schemas
-            tools_schemas = []
+            # Re-collect tool schemas, retaining their source category.
+            categorized_schemas = []
             if self.tool_registry:
-                tools_schemas.extend(self.tool_registry.get_tools_schema())
+                for schema in self.tool_registry.get_tools_schema():
+                    name = schema["function"]["name"]
+                    category = "skills" if name in self.tool_registry._skills else INTERNAL_TOOL_CATEGORIES.get(name, "skills")
+                    categorized_schemas.append((category, schema))
             
             # Inject Protocol Tools
             if self.protocol_manager:
-                tools_schemas.extend(self.protocol_manager.get_tools_schema())
+                categorized_schemas.extend(("protocol", schema) for schema in self.protocol_manager.get_tools_schema())
             
             # Add spawn_sub_agent only if there's room in the recursion budget.
             max_depth = self.config.agents.max_recursion
             if depth + 1 <= max_depth:
-                tools_schemas.append(self._get_recursion_tool_schema())
-            
-            # If no tools, pass None
-            tools_arg = tools_schemas if tools_schemas else None
+                categorized_schemas.append(("recursion", self._get_recursion_tool_schema()))
 
-            system_prompt = self._assemble_system_prompt(task_context)
+            live_categories = {category for category, _ in categorized_schemas}
+            if live_categories and self.config.keys.typesafe:
+                try:
+                    recent_turns = [
+                        {"role": message["role"], "content": str(message.get("content") or "")[:1000]}
+                        for message in messages[-4:] if message["role"] != "system"
+                    ]
+                    decision = await self.decision_engine.decide(
+                        ToolCategoryDecision,
+                        {"request": user_query, "recent_turns": recent_turns},
+                    )
+                    live_categories = {
+                        category for category in live_categories if getattr(decision, category)
+                    }
+                except Exception as e:
+                    logger.warning("Tool category decision failed; using all tools: %s", e)
+            
+            tools_schemas = [schema for category, schema in categorized_schemas if category in live_categories]
+            tools_arg = tools_schemas or None
+
+            system_prompt = self._assemble_system_prompt(task_context, live_categories)
             messages[0]["content"] = system_prompt
             
             try:
@@ -421,7 +460,7 @@ class RLMEngine:
 
         return parsed_tools
 
-    def _assemble_system_prompt(self, task_context: TaskContext) -> str:
+    def _assemble_system_prompt(self, task_context: TaskContext, live_categories: Optional[set[str]] = None) -> str:
         """
         Builds the dynamic system prompt.
         Order: AGENT -> SOUL -> USER (Depth 0) -> TIME -> TOOLS -> MEMORY -> THREAD
@@ -444,7 +483,7 @@ class RLMEngine:
         # 3. The Time & Environment
         now = datetime.now().astimezone()
         parts.append(f"## Current Time\n{now.isoformat()} {now.tzname()}")
-        parts.append(f"## Environment\nOS: {platform.system()} {platform.release()}\nCWD: {os.getcwd()}\nNote: Use `execute_powershell` (standard PowerShell syntax) on Windows, or `execute_bash` (standard Bash syntax) on Linux/macOS.")
+        parts.append(f"## Environment\nOS: {platform.system()} {platform.release()}\nCWD: {os.getcwd()}")
 
         # 4 Memory & Abilities
         if memory_text := self._read_section(KYBEROS_ROOT / "memories" / "MEMORY.md"):
@@ -454,22 +493,22 @@ class RLMEngine:
         # 5. Tool Usage Instructions
         tools_intro = [
             "## Tool Usage Instructions",
-            "You have access to tools provided via native function calling. **CRITICAL: You may ONLY use the tools provided to you. Do NOT invent, guess, or hallucinate tool names. If a tool you want does not exist, use the tools you have to accomplish the task instead (e.g., use write_file, execute_powershell, execute_bash, or run_python), OR create the spell to do it using the spell_crafter spell.**",
+            "Use only the tools provided via native function calling. Do not invent tool names.",
             ""
         ]
 
-        if task_context.depth + 1 <= self.config.agents.max_recursion:
+        if (live_categories is None or "recursion" in live_categories) and task_context.depth + 1 <= self.config.agents.max_recursion:
             tools_intro.append("- **spawn_sub_agent**: Delegates a complex sub-task to a recursive sub-agent. Use ONLY for tasks requiring independent multi-step reasoning or long-form content generation.")
 
         parts.append("\n".join(tools_intro))
 
-        # Inject internal tools and skills
-        if self.tool_registry:
+        # Native schemas already describe routed tools. Keep legacy descriptions only
+        # when this helper is used without a per-turn routing decision.
+        if live_categories is None and self.tool_registry:
             parts.append(self.tool_registry.get_internal_tools_context())
             parts.append(self.tool_registry.get_skills_context())
 
-        # Inject Protocol Tools
-        if self.protocol_manager:
+        if live_categories is None and self.protocol_manager:
             if protocol_tools := self.protocol_manager.get_all_tools_definitions():
                 parts.append(protocol_tools)
 

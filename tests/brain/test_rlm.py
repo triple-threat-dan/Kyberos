@@ -110,6 +110,80 @@ class TestRLMEngineLogic:
         resp.usage = None
         return resp
 
+    @staticmethod
+    def _schema(name):
+        return {"type": "function", "function": {"name": name, "description": name, "parameters": {"type": "object"}}}
+
+    @pytest.mark.asyncio
+    async def test_tool_categories_filter_schemas(self, mock_config, mock_gateway, mock_librarian, mock_thread_manager, mock_tool_registry):
+        mock_config.keys.typesafe = "test-key"
+        mock_tool_registry._skills = {"make_report": {}}
+        mock_tool_registry.get_tools_schema.return_value = [
+            self._schema(name) for name in (
+                "memory_search", "read_file", "execute_powershell", "make_report"
+            )
+        ]
+        protocol = Mock()
+        protocol.get_tools_schema.return_value = [self._schema("discord_send_message")]
+        engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager,
+                           protocol_manager=protocol, tool_registry=mock_tool_registry)
+        engine.decision_engine.decide = AsyncMock(return_value=Mock(
+            memory=True, files=True, shell=False, skills=False, protocol=False, recursion=False
+        ))
+        mock_gateway.chat_completion.return_value = self._create_mock_resp(content="Done")
+
+        assert await engine.think("Find a note and read it") == "Done"
+
+        tools = mock_gateway.chat_completion.await_args.kwargs["tools"]
+        assert [tool["function"]["name"] for tool in tools] == ["memory_search", "read_file"]
+        schema, state = engine.decision_engine.decide.await_args.args
+        assert set(schema.model_fields) == {"memory", "files", "shell", "skills", "protocol", "recursion"}
+        assert state["request"] == "Find a note and read it"
+        assert "make_report" not in mock_gateway.chat_completion.await_args.kwargs["messages"][0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_tool_categories_refresh_after_tool_result(self, mock_config, mock_gateway, mock_librarian, mock_thread_manager, mock_tool_registry):
+        mock_config.keys.typesafe = "test-key"
+        mock_tool_registry._internal_tools = {"read_file": Mock(), "run_python": Mock()}
+        mock_tool_registry.get_tools_schema.return_value = [self._schema("read_file"), self._schema("run_python")]
+        mock_tool_registry.execute_tool.return_value = "numbers found"
+        engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager,
+                           tool_registry=mock_tool_registry)
+        engine.decision_engine.decide = AsyncMock(side_effect=[
+            Mock(memory=False, files=True, shell=False, skills=False, protocol=False, recursion=False),
+            Mock(memory=False, files=False, shell=True, skills=False, protocol=False, recursion=False),
+        ])
+        tool_call = Mock(id="call_1")
+        tool_call.function.name = "read_file"
+        tool_call.function.arguments = '{"path": "data.txt"}'
+        first_response = self._create_mock_resp(content=None, tool_calls=[tool_call])
+        first_response.choices[0].message.model_dump.return_value = {
+            "role": "assistant", "content": None,
+            "tool_calls": [{"id": "call_1", "function": {"name": "read_file", "arguments": '{"path": "data.txt"}'}}],
+        }
+        mock_gateway.chat_completion.side_effect = [first_response, self._create_mock_resp(content="Done")]
+
+        assert await engine.think("Read data, then calculate") == "Done"
+
+        calls = mock_gateway.chat_completion.call_args_list
+        assert [tool["function"]["name"] for tool in calls[0].kwargs["tools"]] == ["read_file"]
+        assert [tool["function"]["name"] for tool in calls[1].kwargs["tools"]] == ["run_python"]
+        assert "numbers found" in str(engine.decision_engine.decide.await_args.args[1]["recent_turns"])
+
+    @pytest.mark.asyncio
+    async def test_tool_category_failure_uses_all_schemas(self, mock_config, mock_gateway, mock_librarian, mock_thread_manager, mock_tool_registry):
+        mock_config.keys.typesafe = "test-key"
+        mock_tool_registry.get_tools_schema.return_value = [self._schema("read_file")]
+        engine = RLMEngine(mock_config, mock_gateway, mock_librarian, mock_thread_manager,
+                           tool_registry=mock_tool_registry)
+        engine.decision_engine.decide = AsyncMock(side_effect=RuntimeError("unreachable"))
+        mock_gateway.chat_completion.return_value = self._create_mock_resp(content="Done")
+
+        assert await engine.think("Read a file") == "Done"
+
+        names = [tool["function"]["name"] for tool in mock_gateway.chat_completion.await_args.kwargs["tools"]]
+        assert names == ["read_file", "spawn_sub_agent"]
+
     @pytest.mark.asyncio
     async def test_think_loop_basic(self, mock_config, mock_gateway, mock_librarian, mock_thread_manager):
         with patch("kyberos.core.config.load_config", return_value=mock_config):
