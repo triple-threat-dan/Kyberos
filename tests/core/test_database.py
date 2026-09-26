@@ -19,6 +19,7 @@ from kyberos.core.database import (
     LLMInteraction, 
     Heartbeat
 )
+from kyberos.core.config import KyberosConfig
 
 @pytest.fixture
 async def temp_db_path(tmp_path):
@@ -298,6 +299,66 @@ async def test_summarize_session_null(audit_logger):
         memory_file = audit_logger.db_path.parent / "memories" / f"{today}.md"
         assert not memory_file.exists()
 
+
+@pytest.mark.asyncio
+async def test_summarize_session_jev_no_skips_llm(audit_logger):
+    gateway = AsyncMock()
+    gateway.config = KyberosConfig()
+    gateway.config.keys.typesafe = "test-key"
+    await audit_logger.log_chat("USER", "Routine chat", session_id="sess1")
+
+    with patch("kyberos.core.database.DecisionEngine") as engine_class:
+        engine_class.return_value.decide = AsyncMock(return_value=MagicMock(worth_logging=False))
+        await audit_logger.summarize_session("sess1", gateway)
+
+    schema, context = engine_class.return_value.decide.await_args.args
+    assert schema.model_fields["worth_logging"].annotation is bool
+    assert "Routine chat" in context["transcript"]
+    gateway.chat_completion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_summarize_session_jev_yes_summarizes(audit_logger):
+    gateway = AsyncMock()
+    gateway.config = KyberosConfig()
+    gateway.config.keys.typesafe = "test-key"
+    gateway.chat_completion.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="Completed the report."))]
+    )
+    await audit_logger.log_chat("USER", "Finish the report", session_id="sess1")
+    (audit_logger.db_path.parent / "memories").mkdir()
+
+    with patch("kyberos.core.database.KYBEROS_ROOT", audit_logger.db_path.parent), \
+         patch("kyberos.core.database.DecisionEngine") as engine_class:
+        engine_class.return_value.decide = AsyncMock(return_value=MagicMock(worth_logging=True))
+        await audit_logger.summarize_session("sess1", gateway)
+
+    engine_class.return_value.decide.assert_awaited_once()
+    prompt = gateway.chat_completion.await_args.kwargs["messages"][0]["content"]
+    assert "respond with exactly: NULL" not in prompt
+    today = datetime.now().strftime("%Y-%m-%d")
+    assert "Completed the report." in (audit_logger.db_path.parent / "memories" / f"{today}.md").read_text()
+
+
+@pytest.mark.asyncio
+async def test_summarize_session_jev_failure_uses_llm(audit_logger, caplog):
+    gateway = AsyncMock()
+    gateway.config = KyberosConfig()
+    gateway.config.keys.typesafe = "test-key"
+    gateway.chat_completion.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="Important outcome."))]
+    )
+    await audit_logger.log_chat("USER", "An important outcome", session_id="sess1")
+    (audit_logger.db_path.parent / "memories").mkdir()
+
+    with patch("kyberos.core.database.KYBEROS_ROOT", audit_logger.db_path.parent), \
+         patch("kyberos.core.database.DecisionEngine") as engine_class:
+        engine_class.return_value.decide = AsyncMock(side_effect=RuntimeError("JEV down"))
+        await audit_logger.summarize_session("sess1", gateway)
+
+    gateway.chat_completion.assert_awaited_once()
+    assert "Session summary triage failed" in caplog.text
+
 @pytest.mark.asyncio
 async def test_init_db_wal_retry(temp_db_path):
     # Create logger with a mock engine to trigger retry
@@ -348,7 +409,7 @@ async def test_summarize_session_no_content(audit_logger):
     gateway.chat_completion.assert_not_called()
 
 @pytest.mark.asyncio
-async def test_summarize_session_error(audit_logger, capsys):
+async def test_summarize_session_error(audit_logger, caplog):
     gateway = AsyncMock()
     gateway.chat_completion.side_effect = Exception("LLM Down")
     
@@ -356,8 +417,7 @@ async def test_summarize_session_error(audit_logger, capsys):
     
     await audit_logger.summarize_session("sess1", gateway)
     
-    captured = capsys.readouterr()
-    assert "Error summarizing session: LLM Down" in captured.out
+    assert "Error summarizing session: LLM Down" in caplog.text
 
 @pytest.mark.asyncio
 async def test_init_db_wal_permanent_failure(temp_db_path):

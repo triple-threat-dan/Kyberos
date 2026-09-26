@@ -1,11 +1,12 @@
 import asyncio
 import aiofiles
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Any, Dict
 from uuid import uuid4
 
-from pydantic import Json
+from pydantic import BaseModel, Field as PydanticField, Json
 from sqlalchemy import JSON, Column, text, delete, func, desc
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import Field, SQLModel, Session, select
@@ -65,7 +66,22 @@ class Heartbeat(SQLModel, table=True):
     metadata_json: Optional[str] = None # JSON string for extra info like load, memory, etc.
 
 
-from kyberos.core.config import KYBEROS_ROOT
+from kyberos.brain.decision_engine import DecisionEngine
+from kyberos.core.config import KYBEROS_ROOT, KyberosConfig
+
+
+logger = logging.getLogger("kyberos.core.database")
+
+
+class SessionSummaryDecision(BaseModel):
+    worth_logging: bool = PydanticField(
+        description=(
+            "Does this chat transcript contain a completed task and its outcome, a key decision, "
+            "or important context worth preserving in today's episodic log? "
+            "Do not count routine chatter, reminders, user profile details, or general lessons alone."
+        )
+    )
+
 
 class AuditLogger:
     def __init__(self, db_path: Optional[Path] = None):
@@ -384,6 +400,19 @@ class AuditLogger:
         if not content:
             return
 
+        config = getattr(gateway, "config", None)
+        if isinstance(config, KyberosConfig) and config.keys.typesafe:
+            try:
+                decision = await DecisionEngine(config).decide(
+                    SessionSummaryDecision,
+                    {"transcript": content},
+                )
+                if not decision.worth_logging:
+                    logger.info("Session %s has no episodic summary to store.", session_id)
+                    return
+            except Exception as e:
+                logger.warning("Session summary triage failed; continuing with summarization: %s", e)
+
         # 2. Prompt LLM
         prompt = f"""
 Here is a transcript of the last 15 messages from a chat session:
@@ -403,7 +432,6 @@ DO NOT INCLUDE (these belong in other files, not the daily log):
 - Cross-session facts or lessons learned (those belong in MEMORY.md)
 
 Keep it brief — highlights only, not a transcript.
-If there is nothing important to store, respond with exactly: NULL
 """
         try:
             # We need to use the gateway to call the LLM
@@ -422,7 +450,7 @@ If there is nothing important to store, respond with exactly: NULL
             
             summary = response.choices[0].message.content.strip()
             
-            if summary == "NULL":
+            if not summary or summary.upper() == "NULL":
                 return
                 
             # 3. Write to File
@@ -435,7 +463,5 @@ If there is nothing important to store, respond with exactly: NULL
                 await f.write(f"\n\n**session summary ({datetime.now().strftime('%H:%M')}):** {summary}")
                 
         except Exception as e:
-            # Import logger here since it's not global in this class scope context easily
-            # or just print for now as in the original stub
-            print(f"Error summarizing session: {e}")
+            logger.error("Error summarizing session: %s", e)
 

@@ -366,6 +366,8 @@ The same decision tier routes tools on each reasoning turn. JEV selects from mem
 
 The Dream Cycle classifies daily log chunks as memory, user, heartbeat, or noise before smart-model extraction. Noise is omitted from the extraction prompt; an all-noise log skips that call. Chunks are retained if JEV fails, and a missing key keeps the original log path. Optional dream stories still use the full daily log.
 
+Session summarization also asks JEV whether the recent conversation contains an outcome, decision, or important context for the daily episodic log. A no answer skips the summarizing LLM call. If triage is unavailable, summarization proceeds as before.
+
 ---
 
 ## Runtime State
