@@ -358,11 +358,13 @@ Bedrock is optional. Install its AWS SDK dependency with `uv sync --extra bedroc
 
 For long-term IAM credentials, omit `bedrock_session_token`. Alternatively, set `keys.bedrock` to an Amazon Bedrock API key, or omit Bedrock credentials to use the standard AWS SDK credential chain. Set the AWS region in `bedrock_region` when using explicit credentials.
 
-### TypeSafe JEV heartbeat decisions
+### TypeSafe JEV decisions
 
 Heartbeat actionability checks use TypeSafe AI's JEV decision model. Set `keys.typesafe` in `.kyberos/kyberos.json` to your TypeSafe API key. The `agents.models.decision_model` tier defaults to provider `typesafe` and model `jev-latest`; existing configs gain this tier when loaded. If JEV is unavailable or the key is missing, the heartbeat check assumes the content is actionable.
 
 The same decision tier routes tools on each reasoning turn. JEV selects from memory, files, shell, skills, and protocol categories using the request and recent turn results. A separate `needs_recursion` answer controls whether `spawn_sub_agent` is offered, subject to the recursion depth limit. Only selected tool schemas are sent to the LLM. If the key is missing or routing fails, other available tools remain visible, while recursion is omitted.
+
+The Dream Cycle classifies daily log chunks as memory, user, heartbeat, or noise before smart-model extraction. Noise is omitted from the extraction prompt; an all-noise log skips that call. Chunks are retained if JEV fails, and a missing key keeps the original log path. Optional dream stories still use the full daily log.
 
 ---
 

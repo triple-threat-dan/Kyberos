@@ -8,12 +8,57 @@ where it summarizes daily logs into long-term memory (Timeline).
 import html
 import json
 import logging
+import re
 from datetime import datetime, timedelta
+from typing import Literal
 
 import aiofiles
+from pydantic import BaseModel, Field
+
+from kyberos.brain.decision_engine import DecisionEngine
 from kyberos.core.config import KYBEROS_ROOT
 
 logger = logging.getLogger("kyberos.memory.timeline")
+
+
+class DreamChunkDecision(BaseModel):
+    category: Literal["memory", "user", "heartbeat", "noise"] = Field(
+        description=(
+            "Classify this daily log chunk by its most relevant destination. "
+            "If it contains information for several destinations, choose any relevant one. "
+            "Choose noise only when none applies."
+        ),
+        json_schema_extra={"criteria": {
+            "memory": "Durable facts, decisions, or lessons useful across sessions.",
+            "user": "User identity, preferences, or enduring personal details.",
+            "heartbeat": "Pending reminders, scheduled tasks, or future follow-ups.",
+            "noise": "Routine chatter, duplicates, or completed tasks with no enduring lesson or follow-up.",
+        }},
+    )
+
+
+async def _filter_dream_log(content: str, config) -> str:
+    """Keep chunks with possible long-term value; retain uncertain chunks."""
+    if not config.keys.typesafe:
+        return content
+
+    engine = DecisionEngine(config)
+    chunks = [chunk.strip() for chunk in re.split(r"\n\s*\n", content) if chunk.strip()]
+    relevant = []
+    for chunk in chunks:
+        try:
+            decision = await engine.decide(
+                DreamChunkDecision,
+                {"log_chunk": chunk, "current_date": datetime.now().date().isoformat()},
+            )
+            if decision.category != "noise":
+                relevant.append(chunk)
+        except Exception as e:
+            logger.warning("Dream Cycle: Chunk triage failed; retaining chunk: %s", e)
+            relevant.append(chunk)
+
+    logger.info("Dream Cycle: Retained %d of %d daily log chunks.", len(relevant), len(chunks))
+    return "\n\n".join(relevant)
 
 
 async def _append_to_file(path, content: str) -> bool:
@@ -71,6 +116,7 @@ async def perform_dream_cycle(audit_logger, gateway, config) -> None:
         return
 
     logger.info("Dream Cycle: Processing daily log for insights...")
+    relevant_content = await _filter_dream_log(content, config)
 
     prompt = f"""
 You are performing the "Dream Cycle" for the AI Agent.
@@ -91,7 +137,7 @@ TASK:
 
 INPUT LOG:
 ---
-{content}
+{relevant_content}
 ---
 
 OUTPUT FORMAT (JSON):
@@ -105,13 +151,16 @@ OUTPUT FORMAT (JSON):
 If no updates are needed for a category, return an empty list.
 """
     try:
-        response = await gateway.chat_completion(
-            messages=[{"role": "user", "content": prompt}],
-            tier="smart_model",
-            response_format={"type": "json_object"}
-        )
-
-        data = json.loads(response.choices[0].message.content)
+        if relevant_content:
+            response = await gateway.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                tier="smart_model",
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content)
+        else:
+            logger.info("Dream Cycle: All chunks were noise; skipping extraction.")
+            data = {}
 
         cleaned_log = html.unescape(data.get("cleaned_daily_log", ""))
         memory_updates = _unescape_list(data.get("memory_updates", []))

@@ -32,6 +32,7 @@ def _make_config(*, enable_dream_stories: bool = True) -> MagicMock:
         "fast_model": SimpleNamespace(model="test-fast"),
         "heartbeat_model": SimpleNamespace(model="test-heartbeat"),
     }
+    config.keys.typesafe = None
     return config
 
 
@@ -343,6 +344,115 @@ class TestDreamCycleStep2:
             await perform_dream_cycle(audit, gateway, config)
 
         gateway.chat_completion.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests: perform_dream_cycle — JEV pre-filter
+# ---------------------------------------------------------------------------
+
+class TestDreamCycleTriage:
+
+    @staticmethod
+    def _write_log(tmp_path: Path, content: str) -> Path:
+        memories = tmp_path / "memories"
+        memories.mkdir()
+        path = memories / f"{datetime.now().strftime('%Y-%m-%d')}.md"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    @pytest.mark.asyncio
+    async def test_only_non_noise_chunks_reach_smart_model(self, tmp_path):
+        from kyberos.memory.timeline import perform_dream_cycle
+
+        self._write_log(
+            tmp_path,
+            "Learned a durable fact.\n\nUser prefers concise answers.\n\nRoutine status ping.\n\nRemind user tomorrow.",
+        )
+        config = _make_config(enable_dream_stories=False)
+        config.keys.typesafe = "test-key"
+        audit = _make_audit_logger(last_sid=None)
+        gateway = _make_gateway(llm_json={
+            "cleaned_daily_log": "clean", "memory_updates": [],
+            "user_updates": [], "heartbeat_updates": [],
+        })
+
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path), \
+             patch("kyberos.memory.timeline.DecisionEngine") as engine_class:
+            engine_class.return_value.decide = AsyncMock(side_effect=[
+                SimpleNamespace(category="memory"),
+                SimpleNamespace(category="user"),
+                SimpleNamespace(category="noise"),
+                SimpleNamespace(category="heartbeat"),
+            ])
+            await perform_dream_cycle(audit, gateway, config)
+
+        assert engine_class.return_value.decide.await_count == 4
+        schema, state = engine_class.return_value.decide.await_args_list[0].args
+        assert set(schema.model_fields["category"].annotation.__args__) == {
+            "memory", "user", "heartbeat", "noise"
+        }
+        assert state["log_chunk"] == "Learned a durable fact."
+        call = gateway.chat_completion.await_args
+        assert call.kwargs["tier"] == "smart_model"
+        prompt = call.kwargs["messages"][0]["content"]
+        assert "Learned a durable fact." in prompt
+        assert "User prefers concise answers." in prompt
+        assert "Remind user tomorrow." in prompt
+        assert "Routine status ping." not in prompt
+
+    @pytest.mark.asyncio
+    async def test_all_noise_skips_smart_extraction_but_keeps_dream_story(self, tmp_path):
+        from kyberos.memory.timeline import perform_dream_cycle
+
+        daily_log = self._write_log(tmp_path, "Routine status ping.")
+        config = _make_config(enable_dream_stories=True)
+        config.keys.typesafe = "test-key"
+        gateway = _make_gateway()
+
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path), \
+             patch("kyberos.memory.timeline.DecisionEngine") as engine_class:
+            engine_class.return_value.decide = AsyncMock(return_value=SimpleNamespace(category="noise"))
+            await perform_dream_cycle(_make_audit_logger(last_sid=None), gateway, config)
+
+        assert [call.kwargs["tier"] for call in gateway.chat_completion.await_args_list] == ["fast_model"]
+        assert daily_log.read_text(encoding="utf-8") == "Routine status ping."
+
+    @pytest.mark.asyncio
+    async def test_triage_failure_retains_chunk(self, tmp_path):
+        from kyberos.memory.timeline import perform_dream_cycle
+
+        self._write_log(tmp_path, "Important detail.\n\nRoutine ping.")
+        config = _make_config(enable_dream_stories=False)
+        config.keys.typesafe = "test-key"
+        gateway = _make_gateway()
+
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path), \
+             patch("kyberos.memory.timeline.DecisionEngine") as engine_class:
+            engine_class.return_value.decide = AsyncMock(side_effect=[
+                RuntimeError("JEV unavailable"), SimpleNamespace(category="noise")
+            ])
+            await perform_dream_cycle(_make_audit_logger(last_sid=None), gateway, config)
+
+        prompt = gateway.chat_completion.await_args.kwargs["messages"][0]["content"]
+        assert "Important detail." in prompt
+        assert "Routine ping." not in prompt
+
+    @pytest.mark.asyncio
+    async def test_missing_key_sends_full_log_to_smart_model(self, tmp_path):
+        from kyberos.memory.timeline import perform_dream_cycle
+
+        self._write_log(tmp_path, "Important detail.\n\nRoutine ping.")
+        config = _make_config(enable_dream_stories=False)
+        gateway = _make_gateway()
+
+        with patch("kyberos.memory.timeline.KYBEROS_ROOT", tmp_path), \
+             patch("kyberos.memory.timeline.DecisionEngine") as engine_class:
+            await perform_dream_cycle(_make_audit_logger(last_sid=None), gateway, config)
+
+        engine_class.assert_not_called()
+        prompt = gateway.chat_completion.await_args.kwargs["messages"][0]["content"]
+        assert "Important detail." in prompt
+        assert "Routine ping." in prompt
 
 
 # ---------------------------------------------------------------------------

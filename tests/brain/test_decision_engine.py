@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Literal
 
 import pytest
 from pydantic import BaseModel, Field
@@ -60,8 +61,59 @@ async def test_decide_rejects_unsupported_schema(config):
     class Unsupported(BaseModel):
         explanation: str = Field(description="Explain the answer")
 
-    with pytest.raises(ValueError, match="described bool"):
+    with pytest.raises(ValueError, match="bool or string Literal"):
         await DecisionEngine(config).decide(Unsupported, {})
+
+
+@pytest.mark.asyncio
+async def test_decide_choice_maps_literal_options(config):
+    class LogCategory(BaseModel):
+        category: Literal["memory", "noise"] = Field(
+            description="Which category fits?",
+            json_schema_extra={"criteria": {"memory": "Durable fact", "noise": "No lasting value"}},
+        )
+
+    response = MagicMock()
+    response.json = AsyncMock(return_value={
+        "answers": {"category": {"type": "choice", "choice": "memory"}}
+    })
+    session = MagicMock()
+    session.post.return_value.__aenter__ = AsyncMock(return_value=response)
+    session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("kyberos.brain.decision_engine.aiohttp.ClientSession", return_value=session):
+        result = await DecisionEngine(config).decide(LogCategory, {"log_chunk": "User likes cats"})
+
+    assert result.category == "memory"
+    assert session.post.call_args.kwargs["json"]["questions"] == {
+        "category": {
+            "type": "choice",
+            "instructions": "Which category fits?",
+            "criteria": {"memory": "Durable fact", "noise": "No lasting value"},
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_decide_choice_rejects_unknown_option(config):
+    class LogCategory(BaseModel):
+        category: Literal["memory", "noise"] = Field(description="Which category fits?")
+
+    response = MagicMock()
+    response.json = AsyncMock(return_value={
+        "answers": {"category": {"type": "choice", "choice": "other"}}
+    })
+    session = MagicMock()
+    session.post.return_value.__aenter__ = AsyncMock(return_value=response)
+    session.post.return_value.__aexit__ = AsyncMock(return_value=None)
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("kyberos.brain.decision_engine.aiohttp.ClientSession", return_value=session):
+        with pytest.raises(ValueError, match="Invalid choice"):
+            await DecisionEngine(config).decide(LogCategory, {})
 
 
 @pytest.mark.asyncio
