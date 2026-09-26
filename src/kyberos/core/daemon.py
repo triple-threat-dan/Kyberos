@@ -420,7 +420,7 @@ async def run_daemon(tui_app: Optional[App], api_app: FastAPI) -> None:
 
                 model_tier = "heartbeat_model" if source == "HEARTBEAT" else "smart_model"
                 
-                if source == "HEARTBEAT":
+                if source == "HEARTBEAT" and not item.get("heartbeat_prechecked"):
                     try:
                         check_target = item.get("heartbeat_source_content", user_msg)
                         if not await rlm_engine.check_heartbeat_necessity(check_target):

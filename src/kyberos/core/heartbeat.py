@@ -13,14 +13,59 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
+from pydantic import Field, create_model
+
+from kyberos.brain.decision_engine import DecisionEngine
 from kyberos.core.config import KYBEROS_ROOT, load_config
 from kyberos.core.database import AuditLogger
 from kyberos.memory import timeline
 
 logger = logging.getLogger("kyberos.core.heartbeat")
 
-# Pre-compiled regex for performance
-PENDING_TASK_RE = re.compile(r"^\s*-\s+.*", re.MULTILINE)
+
+def _heartbeat_tasks(content: str) -> list[dict[str, str]]:
+    """Read task bullets while ignoring examples inside HTML comments."""
+    visible_content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+    section = "Tasks"
+    tasks = []
+    for line in visible_content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            section = stripped.lstrip("#").strip()
+        elif stripped.startswith("- "):
+            tasks.append({"section": section, "line": stripped})
+    return tasks
+
+
+async def _actionable_heartbeat_tasks(
+    tasks: list[dict[str, str]], config
+) -> tuple[list[dict[str, str]], bool]:
+    """Classify each task against one captured local time; retain all on failure."""
+    if not config.keys.typesafe:
+        return tasks, False
+
+    questions = {
+        f"task_{index}": (
+            bool,
+            Field(description=(
+                f"Is `tasks[{index}]` actionable at `current_time`? Check its date, day, "
+                "recurrence, completion tag, and time window. Future or elapsed windows "
+                "are not actionable; an untimed pending task is actionable."
+            )),
+        )
+        for index in range(len(tasks))
+    }
+    schema = create_model("HeartbeatTaskDecisions", **questions)
+    try:
+        decision = await DecisionEngine(config).decide(
+            schema,
+            {"tasks": tasks, "current_time": datetime.now().astimezone().isoformat()},
+        )
+        return [task for index, task in enumerate(tasks) if getattr(decision, f"task_{index}")], True
+    except Exception as e:
+        logger.warning("Heartbeat task triage failed; retaining all tasks: %s", e)
+        return tasks, False
+
 
 class HeartbeatManager:
     """
@@ -152,35 +197,41 @@ async def run_heartbeat_task(command_bus: Optional[asyncio.Queue] = None):
         return
 
     content = heartbeat_file.read_text(encoding="utf-8")
-    if PENDING_TASK_RE.search(content):
+    tasks = _heartbeat_tasks(content)
+    if tasks:
         if not command_bus:
             logger.warning("Heartbeat: No command_bus connection!")
             return
 
-        logger.info("Heartbeat: Pending tasks detected. Waking agent...")
+        actionable_tasks, triage_verified = await _actionable_heartbeat_tasks(tasks, config)
+        if not actionable_tasks:
+            logger.info("Heartbeat: No tasks actionable in the current time window.")
+            return
+
+        logger.info("Heartbeat: %d actionable tasks detected. Waking agent...", len(actionable_tasks))
         
         heartbeat_path = str(heartbeat_file.resolve())
         session_id = f"heartbeat-{uuid4()}"
         
+        selected_content = "\n".join(
+            f"### {task['section']}\n{task['line']}" for task in actionable_tasks
+        )
+        time_guidance = "" if triage_verified else (
+            f"Time prefilter unavailable. Current local time: {datetime.now().astimezone().isoformat()}. "
+            "Check each candidate's time condition before acting; skip future, elapsed, or completed tasks.\n"
+        )
         prompt = (
             "🔴 **SYSTEM HEARTBEAT TRIGGERED**\n\n"
-            f"The system heartbeat has activated. Please review your `HEARTBEAT.md` checklist below (located at `{heartbeat_path}`) and perform any pending tasks.\n\n"
+            f"The system heartbeat has activated. Review the tasks from `{heartbeat_path}`.\n\n"
+            f"{time_guidance}"
             "**RULES & STATE TRACKING:**\n"
             "1. **Clean Thread**: You are starting with a clean thread for this heartbeat. Ignore your main background tasks.\n"
             "2. **Recurring Task Tracking**: When you complete a **Recurring Task**, you MUST mutate the `HEARTBEAT.md` file to append a timestamp tag to the end of that specific task line: `[LAST COMPLETED: YYYY-MM-DD]`. Example: `- Between 10am and 11am... [LAST COMPLETED: 2026-02-21]`\n"
-            "3. **STRICT TIME CHECK**: Before executing ANY task, you MUST evaluate the time. You cannot do time math in your head. You MUST open a `<thinking>` block and evaluate EVERY task against the Current Time.\n"
-            "   - If a task is scheduled for the FUTURE -> SKIP.\n"
-            "   - If a task's time window has ALREADY PASSED (e.g., it is 3:00 PM and the task was for 12:00 PM) -> SKIP (do not attempt to 'catch up' on missed recurring tasks).\n"
-            "   - If a task is actionable RIGHT NOW -> Mark as ACTIONABLE.\n"
-            "4. **One-time Tasks**: After completing a one-time reminder, remove it from the `One-time Reminders` section as usual.\n"
-            "5. **No History**: Do NOT track heartbeat task progress in HEARTBEAT.md — use it ONLY for final completion tags.\n\n"
-            f"```markdown\n{content}\n```\n\n"
+            "3. **One-time Tasks**: After completing a one-time reminder, remove it from the `One-time Reminders` section as usual.\n"
+            "4. **No History**: Do NOT track heartbeat task progress in HEARTBEAT.md — use it ONLY for final completion tags.\n\n"
+            f"**{'SELECTED' if triage_verified else 'CANDIDATE'} TASKS:**\n```markdown\n{selected_content}\n```\n\n"
             "**EXECUTION INSTRUCTIONS:**\n"
-            "1. You MUST start your response with a `<thinking>...</thinking>` block to evaluate the times.\n"
-            "2. Immediately after closing the `</thinking>` tag:\n"
-            "   - If NO tasks are actionable right now, output EXACTLY AND ONLY: `<|stop|>`\n"
-            "   - If tasks ARE actionable, output the JSON tool calls to execute them.\n"
-            "3. **DO NOT** chat or use your persona outside of the thinking block. Only output `<|stop|>` or valid tool calls.\n"
+            "Execute listed tasks that are due using the available tools. Only update HEARTBEAT.md with final completion tags or removal of completed one-time tasks.\n"
         )
         
         try:
@@ -189,7 +240,8 @@ async def run_heartbeat_task(command_bus: Optional[asyncio.Queue] = None):
                 "message": prompt,
                 "source": "HEARTBEAT",
                 "session_id": session_id,
-                "heartbeat_source_content": content 
+                "heartbeat_source_content": selected_content,
+                "heartbeat_prechecked": True,
             })
         except Exception as ex:
             logger.error(f"Heartbeat Bus Error: {ex}")

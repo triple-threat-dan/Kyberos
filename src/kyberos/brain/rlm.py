@@ -527,7 +527,7 @@ class RLMEngine:
         # 7. The Thread (Working Memory)
         if task_context.source == "HEARTBEAT":
             # Clean Thread for Heartbeats: Do NOT inject the main THREAD.md
-            parts.append("## Current Thread (Temporary)\nYou are currently performing a **Heartbeat System Check**. You have a clean slate for this task. Thread exclusively on evaluating and performing pending items from `HEARTBEAT.md` if any are actionable. Once complete, this temporary thread will be discarded.")
+            parts.append("## Current Thread (Temporary)\nYou are performing a **Heartbeat System Check** with a clean thread. Work only on tasks included in the current heartbeat message. If the message says the time prefilter was unavailable, verify each candidate's timing before acting. Use HEARTBEAT.md for final completion updates. This temporary thread will be discarded afterward.")
         elif thread_text := self._read_section(KYBEROS_ROOT / "memories" / "THREAD.md"):
             parts.append(thread_text)
         

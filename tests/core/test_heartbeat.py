@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,6 +24,7 @@ def mock_audit_logger():
 def mock_config():
     config = MagicMock()
     config.agents.defaults.heartbeat.active_hours = "09:00-17:00"
+    config.keys.typesafe = None
     return config
 
 def test_heartbeat_manager_singleton():
@@ -128,6 +130,8 @@ async def test_run_heartbeat_task_active_hours(tmp_path, mock_config, mock_audit
         msg = await command_bus.get()
         assert msg["source"] == "HEARTBEAT"
         assert "Task 1" in msg["heartbeat_source_content"]
+        assert msg["heartbeat_prechecked"] is True
+        assert "<thinking>" not in msg["message"]
 
     # 2. Outside hours
     mock_config.agents.defaults.heartbeat.active_hours = "00:00-00:01" # Assuming it's not currently this minute
@@ -141,6 +145,78 @@ async def test_run_heartbeat_task_active_hours(tmp_path, mock_config, mock_audit
         await run_heartbeat_task(command_bus)
         # Should NOT put second message on bus
         assert command_bus.empty()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_jev_selects_only_actionable_tasks(tmp_path, mock_config):
+    mock_config.agents.defaults.heartbeat.active_hours = "00:00-23:59"
+    mock_config.keys.typesafe = "test-key"
+    heartbeat_file = tmp_path / "HEARTBEAT.md"
+    heartbeat_file.write_text(
+        "### Recurring Tasks\n<!--\n- Example at 10am\n-->\n"
+        "- Check logs now\n- Remind user tomorrow\n",
+        encoding="utf-8",
+    )
+    command_bus = asyncio.Queue()
+
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", tmp_path), \
+         patch("kyberos.core.heartbeat.DecisionEngine") as engine_class:
+        engine_class.return_value.decide = AsyncMock(
+            return_value=SimpleNamespace(task_0=True, task_1=False)
+        )
+        await run_heartbeat_task(command_bus)
+
+    schema, state = engine_class.return_value.decide.await_args.args
+    assert set(schema.model_fields) == {"task_0", "task_1"}
+    assert state["tasks"] == [
+        {"section": "Recurring Tasks", "line": "- Check logs now"},
+        {"section": "Recurring Tasks", "line": "- Remind user tomorrow"},
+    ]
+    assert datetime.fromisoformat(state["current_time"]).tzinfo is not None
+    queued = command_bus.get_nowait()
+    assert "Check logs now" in queued["message"]
+    assert "Remind user tomorrow" not in queued["message"]
+    assert "Example at 10am" not in queued["message"]
+    assert "<thinking>" not in queued["message"]
+    assert queued["heartbeat_source_content"] == "### Recurring Tasks\n- Check logs now"
+    assert queued["heartbeat_prechecked"] is True
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_jev_no_tasks_skips_agent(tmp_path, mock_config):
+    mock_config.agents.defaults.heartbeat.active_hours = "00:00-23:59"
+    mock_config.keys.typesafe = "test-key"
+    (tmp_path / "HEARTBEAT.md").write_text("- Remind user tomorrow", encoding="utf-8")
+    command_bus = asyncio.Queue()
+
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", tmp_path), \
+         patch("kyberos.core.heartbeat.DecisionEngine") as engine_class:
+        engine_class.return_value.decide = AsyncMock(return_value=SimpleNamespace(task_0=False))
+        await run_heartbeat_task(command_bus)
+
+    assert command_bus.empty()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_jev_failure_retains_candidates(tmp_path, mock_config, caplog):
+    mock_config.agents.defaults.heartbeat.active_hours = "00:00-23:59"
+    mock_config.keys.typesafe = "test-key"
+    (tmp_path / "HEARTBEAT.md").write_text("- Remind user tomorrow", encoding="utf-8")
+    command_bus = asyncio.Queue()
+
+    with patch("kyberos.core.heartbeat.load_config", return_value=mock_config), \
+         patch("kyberos.core.heartbeat.KYBEROS_ROOT", tmp_path), \
+         patch("kyberos.core.heartbeat.DecisionEngine") as engine_class:
+        engine_class.return_value.decide = AsyncMock(side_effect=RuntimeError("JEV down"))
+        await run_heartbeat_task(command_bus)
+
+    queued = command_bus.get_nowait()
+    assert "CANDIDATE TASKS" in queued["message"]
+    assert "Check each candidate's time condition" in queued["message"]
+    assert "Remind user tomorrow" in queued["heartbeat_source_content"]
+    assert "Heartbeat task triage failed" in caplog.text
 
 @pytest.mark.asyncio
 async def test_run_heartbeat_midnight_crossing(tmp_path, mock_config, mock_audit_logger):

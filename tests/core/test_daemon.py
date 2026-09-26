@@ -346,6 +346,33 @@ async def test_run_daemon_message_loops(mock_dependencies, mock_api_app, capsys)
     assert len(mock_api_app.state.web_log_buffer) > 0
     
     # Check that RLM engine received the web message to think about
+
+
+@pytest.mark.asyncio
+async def test_prechecked_heartbeat_skips_second_jev_check(mock_dependencies, mock_api_app):
+    engine = mock_dependencies["rlm_engine"]
+    engine.check_heartbeat_necessity = AsyncMock(return_value=False)
+
+    async def send_prechecked_heartbeat():
+        await mock_api_app.state.command_bus.put({
+            "level": "USER",
+            "message": "Perform selected heartbeat task",
+            "source": "HEARTBEAT",
+            "heartbeat_prechecked": True,
+        })
+        await asyncio.sleep(0.1)
+        raise asyncio.CancelledError()
+
+    with patch("kyberos.core.daemon.asyncio.Event.wait", side_effect=send_prechecked_heartbeat):
+        await daemon.run_daemon(None, mock_api_app)
+
+    engine.check_heartbeat_necessity.assert_not_awaited()
+    assert any(
+        call.args[0] == "Perform selected heartbeat task"
+        for call in engine.think.await_args_list
+    )
+
+
 @pytest.mark.asyncio
 async def test_run_daemon_message_errors_and_protocols(mock_dependencies, mock_api_app, mock_config, capsys, caplog):
     """Test the brain_loop handling of PROTOCOLs, heartbeat errors, dispatcher errors, and loop crashes."""
